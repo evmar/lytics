@@ -51,7 +51,13 @@ type StrTabWriter struct {
 }
 
 func NewStrTabWriter(w *TableWriter) *StrTabWriter {
-	return &StrTabWriter{NumTabWriter: NewNumTabWriter(w), strs: map[string]int{}, next: 1}
+	strs := map[string]int{}
+	strs[""] = 0
+	return &StrTabWriter{
+		NumTabWriter: NewNumTabWriter(w),
+		strs:         strs,
+		next:         1,
+	}
 }
 
 func (w *StrTabWriter) Write(s string) error {

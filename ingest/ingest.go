@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -66,12 +67,19 @@ type Table interface {
 }
 
 type Loader struct {
+	metaWriter io.WriteCloser
 	dateWriter *NumTabWriter
 	pathWriter *StrTabWriter
 }
 
 func newLoader(dir string) (*Loader, error) {
 	var l Loader
+
+	f, err := os.Create(path.Join(dir, "meta"))
+	if err != nil {
+		return nil, err
+	}
+	l.metaWriter = f
 
 	t, err := NewTableWriter(path.Join(dir, "date"))
 	if err != nil {
@@ -89,14 +97,14 @@ func newLoader(dir string) (*Loader, error) {
 }
 
 func (l *Loader) parse(r io.Reader) error {
-	lines := 0
+	rows := 0
 	s := bufio.NewScanner(r)
 	var logLine LogLine
 	for s.Scan() {
-		lines++
+		rows++
 		line := s.Text()
 		if err := logLine.parse(line); err != nil {
-			return fmt.Errorf("line %d: %s in %q", lines, err, line)
+			return fmt.Errorf("line %d: %s in %q", rows, err, line)
 		}
 		if err := l.dateWriter.Write(int(logLine.Time.Unix())); err != nil {
 			return err
@@ -108,7 +116,7 @@ func (l *Loader) parse(r io.Reader) error {
 	if err := s.Err(); err != nil {
 		return err
 	}
-	log.Printf("read %d lines", lines)
+	log.Printf("read %d lines", rows)
 
 	type Table interface {
 		Finish() error
@@ -127,6 +135,25 @@ func (l *Loader) parse(r io.Reader) error {
 			return err
 		}
 	}
+
+	type TableMeta struct {
+		Type string `json:"type"`
+	}
+	type Meta struct {
+		Rows   int                  `json:"rows"`
+		Tables map[string]TableMeta `json:"tables"`
+	}
+
+	meta := Meta{Rows: rows, Tables: map[string]TableMeta{}}
+	meta.Tables["date"] = TableMeta{Type: "num"}
+	meta.Tables["path"] = TableMeta{Type: "str"}
+	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
+		return err
+	}
+	if err := l.metaWriter.Close(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
