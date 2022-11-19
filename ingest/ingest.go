@@ -98,14 +98,19 @@ func newLoader(dir string) (*Loader, error) {
 
 func (l *Loader) parse(r io.Reader) error {
 	rows := 0
+	lines := 0
 	s := bufio.NewScanner(r)
 	var logLine LogLine
 	for s.Scan() {
-		rows++
+		lines++
 		line := s.Text()
 		if err := logLine.parse(line); err != nil {
-			return fmt.Errorf("line %d: %s in %q", rows, err, line)
+			return fmt.Errorf("line %d: %s in %q", lines, err, line)
 		}
+		if logLine.Status != 200 {
+			continue
+		}
+		rows++
 		if err := l.dateWriter.Write(int(logLine.Time.Unix())); err != nil {
 			return err
 		}
