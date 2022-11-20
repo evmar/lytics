@@ -7,12 +7,6 @@ import (
 	"os"
 )
 
-type TableSchema struct {
-	Name  string      `json:"name"`
-	Type  string      `json:"type"`
-	Attrs interface{} `json:"attrs"`
-}
-
 type ColumnWriter struct {
 	*bufio.Writer
 	io.WriteCloser
