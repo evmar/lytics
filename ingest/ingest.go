@@ -70,6 +70,7 @@ type Loader struct {
 	metaWriter io.WriteCloser
 	timeWriter *NumTabWriter
 	pathWriter *StrTabWriter
+	refWriter  *StrTabWriter
 }
 
 func newLoader(dir string) (*Loader, error) {
@@ -92,6 +93,12 @@ func newLoader(dir string) (*Loader, error) {
 		return nil, err
 	}
 	l.pathWriter = NewStrTabWriter(t)
+
+	t, err = NewTableWriter(path.Join(dir, "ref"))
+	if err != nil {
+		return nil, err
+	}
+	l.refWriter = NewStrTabWriter(t)
 
 	return &l, nil
 }
@@ -117,6 +124,9 @@ func (l *Loader) parse(r io.Reader) error {
 		if err := l.pathWriter.Write(logLine.Path); err != nil {
 			return err
 		}
+		if err := l.refWriter.Write(logLine.Referer); err != nil {
+			return err
+		}
 	}
 	if err := s.Err(); err != nil {
 		return err
@@ -129,7 +139,7 @@ func (l *Loader) parse(r io.Reader) error {
 		Close() error
 	}
 
-	for _, w := range []Table{l.timeWriter, l.pathWriter} {
+	for _, w := range []Table{l.timeWriter, l.pathWriter, l.refWriter} {
 		if err := w.Finish(); err != nil {
 			return err
 		}
@@ -152,6 +162,7 @@ func (l *Loader) parse(r io.Reader) error {
 	meta := Meta{Rows: rows, Tables: map[string]TableMeta{}}
 	meta.Tables["time"] = TableMeta{Type: "num"}
 	meta.Tables["path"] = TableMeta{Type: "str"}
+	meta.Tables["ref"] = TableMeta{Type: "str"}
 	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
 		return err
 	}

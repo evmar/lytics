@@ -68,6 +68,14 @@ class NumTable {
     return new NumTable(new Uint32Array(raw), rows);
   }
 
+  raw(row: number): number {
+    return this.tab[row];
+  }
+
+  str(row: number): string {
+    return this.raw(row).toString();
+  }
+
   count(): Map<number, number> {
     const counts = new Map<number, number>();
     for (const value of this.tab) {
@@ -99,6 +107,14 @@ class StrTable {
     const json = new TextDecoder().decode(new DataView(raw, numTab.tab.byteLength));
     const strings = JSON.parse(json);
     return new StrTable(numTab, strings);
+  }
+
+  raw(row: number): number {
+    return this.numTab.raw(row);
+  }
+
+  str(row: number): string {
+    return this.strs[this.raw(row)];
   }
 
   top(n: number): Array<{ value: string, count: number }> {
