@@ -61,16 +61,11 @@ func (l *LogLine) parse(text string) error {
 	return nil
 }
 
-type Table interface {
-	Flush() error
-	Close() error
-}
-
 type Loader struct {
 	metaWriter io.WriteCloser
-	timeWriter *NumTabWriter
-	pathWriter *StrTabWriter
-	refWriter  *StrTabWriter
+	timeWriter *NumColWriter
+	pathWriter *StrColWriter
+	refWriter  *StrColWriter
 }
 
 func newLoader(dir string) (*Loader, error) {
@@ -82,23 +77,23 @@ func newLoader(dir string) (*Loader, error) {
 	}
 	l.metaWriter = f
 
-	t, err := NewTableWriter(path.Join(dir, "time"))
+	t, err := NewColumnWriter(path.Join(dir, "time"))
 	if err != nil {
 		return nil, err
 	}
-	l.timeWriter = NewNumTabWriter(t)
+	l.timeWriter = NewNumColWriter(t)
 
-	t, err = NewTableWriter(path.Join(dir, "path"))
+	t, err = NewColumnWriter(path.Join(dir, "path"))
 	if err != nil {
 		return nil, err
 	}
-	l.pathWriter = NewStrTabWriter(t)
+	l.pathWriter = NewStrColWriter(t)
 
-	t, err = NewTableWriter(path.Join(dir, "ref"))
+	t, err = NewColumnWriter(path.Join(dir, "ref"))
 	if err != nil {
 		return nil, err
 	}
-	l.refWriter = NewStrTabWriter(t)
+	l.refWriter = NewStrColWriter(t)
 
 	return &l, nil
 }
@@ -133,13 +128,13 @@ func (l *Loader) parse(r io.Reader) error {
 	}
 	log.Printf("read %d lines", rows)
 
-	type Table interface {
+	type Column interface {
 		Finish() error
 		Flush() error
 		Close() error
 	}
 
-	for _, w := range []Table{l.timeWriter, l.pathWriter, l.refWriter} {
+	for _, w := range []Column{l.timeWriter, l.pathWriter, l.refWriter} {
 		if err := w.Finish(); err != nil {
 			return err
 		}
@@ -151,18 +146,18 @@ func (l *Loader) parse(r io.Reader) error {
 		}
 	}
 
-	type TableMeta struct {
+	type ColMeta struct {
 		Type string `json:"type"`
 	}
 	type Meta struct {
-		Rows   int                  `json:"rows"`
-		Tables map[string]TableMeta `json:"tables"`
+		Rows int                `json:"rows"`
+		Cols map[string]ColMeta `json:"cols"`
 	}
 
-	meta := Meta{Rows: rows, Tables: map[string]TableMeta{}}
-	meta.Tables["time"] = TableMeta{Type: "num"}
-	meta.Tables["path"] = TableMeta{Type: "str"}
-	meta.Tables["ref"] = TableMeta{Type: "str"}
+	meta := Meta{Rows: rows, Cols: map[string]ColMeta{}}
+	meta.Cols["time"] = ColMeta{Type: "num"}
+	meta.Cols["path"] = ColMeta{Type: "str"}
+	meta.Cols["ref"] = ColMeta{Type: "str"}
 	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
 		return err
 	}

@@ -1,18 +1,18 @@
 
-interface TableMeta {
+interface ColMeta {
   type: string;
 }
 interface Meta {
   rows: number;
-  tables: { [name: string]: TableMeta };
+  cols: { [name: string]: ColMeta };
 }
 
-type SchemaTable<T> = T extends 'num' ? NumTable : T extends 'str' ? StrTable : never;
-type SchemaTables<S> = {
-  [table in keyof S]: SchemaTable<S[table]>;
+type SchemaCol<T> = T extends 'num' ? NumCol : T extends 'str' ? StrCol : never;
+type SchemaCols<S> = {
+  [col in keyof S]: SchemaCol<S[col]>;
 }
 
-async function loadCheckMeta<S extends { [table: string]: string }>(schema: S, root: string): Promise<Meta> {
+async function loadCheckMeta<S extends { [col: string]: string }>(schema: S, root: string): Promise<Meta> {
   const path = `${root}/meta`;
   const req = await fetch(path);
   if (!req.ok) {
@@ -20,56 +20,56 @@ async function loadCheckMeta<S extends { [table: string]: string }>(schema: S, r
   }
   const meta: Meta = await req.json();
 
-  const tables: { [name: string]: unknown } = {};
+  const cols: { [name: string]: unknown } = {};
   const loads: Array<Promise<void>> = [];
   for (const [name, type] of Object.entries(schema)) {
-    const tmeta = meta.tables[name];
+    const tmeta = meta.cols[name];
     if (!tmeta) {
-      throw new Error(`missing table ${name} in meta`);
+      throw new Error(`missing column ${name} in meta`);
     }
     if (tmeta.type !== type) {
-      throw new Error(`table ${name}: expected ${type}, got ${tmeta.type}`);
+      throw new Error(`column ${name}: expected ${type}, got ${tmeta.type}`);
     }
   }
   return meta;
 }
 
-export class Tables<S> {
-  private constructor(readonly rows: number, readonly tables: SchemaTables<S>) { }
+export class Table<S> {
+  private constructor(readonly rows: number, readonly columns: SchemaCols<S>) { }
 
-  static async load<S extends { [table: string]: string }>(schema: S, root: string): Promise<Tables<S>> {
+  static async load<S extends { [col: string]: string }>(schema: S, root: string): Promise<Table<S>> {
     const meta = await loadCheckMeta(schema, root);
-    const tables: { [name: string]: unknown } = {};
+    const cols: { [name: string]: unknown } = {};
     const loads: Array<Promise<void>> = [];
     for (const [name, type] of Object.entries(schema)) {
       const path = `${root}/${name}`;
       switch (type) {
         case 'num':
-          loads.push((async () => { tables[name] = await NumTable.load(path, meta.rows); })());
+          loads.push((async () => { cols[name] = await NumCol.load(path, meta.rows); })());
           break;
         case 'str':
-          loads.push((async () => { tables[name] = await StrTable.load(path, meta.rows); })());
+          loads.push((async () => { cols[name] = await StrCol.load(path, meta.rows); })());
           break;
       }
     }
     await Promise.all(loads);
-    return new Tables(meta.rows, tables as SchemaTables<S>);
+    return new Table(meta.rows, cols as SchemaCols<S>);
   }
 }
 
-class NumTable {
-  constructor(readonly tab: Uint32Array, readonly rows: number) { }
-  static async load(path: string, rows: number): Promise<NumTable> {
+class NumCol {
+  constructor(readonly arr: Uint32Array, readonly rows: number) { }
+  static async load(path: string, rows: number): Promise<NumCol> {
     const req = await fetch(path);
     if (!req.ok) {
       throw new Error(`load ${path} failed`);
     }
     const raw = await req.arrayBuffer();
-    return new NumTable(new Uint32Array(raw), rows);
+    return new NumCol(new Uint32Array(raw), rows);
   }
 
   raw(row: number): number {
-    return this.tab[row];
+    return this.arr[row];
   }
 
   str(row: number): string {
@@ -78,7 +78,7 @@ class NumTable {
 
   count(): Map<number, number> {
     const counts = new Map<number, number>();
-    for (const value of this.tab) {
+    for (const value of this.arr) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
     return counts;
@@ -94,23 +94,23 @@ class NumTable {
   }
 }
 
-class StrTable {
-  constructor(readonly numTab: NumTable, readonly strs: string[]) { }
+class StrCol {
+  constructor(readonly numCol: NumCol, readonly strs: string[]) { }
 
-  static async load(path: string, rows: number): Promise<StrTable> {
+  static async load(path: string, rows: number): Promise<StrCol> {
     const req = await fetch(path);
     if (!req.ok) {
       throw new Error(`load ${path} failed`);
     }
     const raw = await req.arrayBuffer();
-    const numTab = new NumTable(new Uint32Array(raw.slice(0, 4 * rows)), rows);
-    const json = new TextDecoder().decode(new DataView(raw, numTab.tab.byteLength));
+    const numCol = new NumCol(new Uint32Array(raw.slice(0, 4 * rows)), rows);
+    const json = new TextDecoder().decode(new DataView(raw, numCol.arr.byteLength));
     const strings = JSON.parse(json);
-    return new StrTable(numTab, strings);
+    return new StrCol(numCol, strings);
   }
 
   raw(row: number): number {
-    return this.numTab.raw(row);
+    return this.numCol.raw(row);
   }
 
   str(row: number): string {
@@ -119,7 +119,7 @@ class StrTable {
 
   top(n: number): Array<{ value: string, count: number }> {
     const top = [];
-    for (const { value, count } of this.numTab.top(n)) {
+    for (const { value, count } of this.numCol.top(n)) {
       top.push({ value: this.strs[value], count });
     }
     return top;

@@ -13,64 +13,64 @@ type TableSchema struct {
 	Attrs interface{} `json:"attrs"`
 }
 
-type TableWriter struct {
+type ColumnWriter struct {
 	*bufio.Writer
 	io.WriteCloser
 }
 
-func NewTableWriter(path string) (*TableWriter, error) {
+func NewColumnWriter(path string) (*ColumnWriter, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
-	return &TableWriter{WriteCloser: f, Writer: bufio.NewWriter(f)}, nil
+	return &ColumnWriter{WriteCloser: f, Writer: bufio.NewWriter(f)}, nil
 }
 
-type NumTabWriter struct {
-	*TableWriter
+type NumColWriter struct {
+	*ColumnWriter
 }
 
-func NewNumTabWriter(w *TableWriter) *NumTabWriter {
-	return &NumTabWriter{TableWriter: w}
+func NewNumColWriter(w *ColumnWriter) *NumColWriter {
+	return &NumColWriter{ColumnWriter: w}
 }
 
-func (w *NumTabWriter) Write(n int) error {
+func (w *NumColWriter) Write(n int) error {
 	buf := [4]byte{byte(n), byte(n >> 8), byte(n >> 16), byte(n >> 24)}
 	_, err := w.Writer.Write(buf[:])
 	return err
 }
 
-func (w *NumTabWriter) Finish() error {
+func (w *NumColWriter) Finish() error {
 	return nil
 }
 
-type StrTabWriter struct {
-	*NumTabWriter
+type StrColWriter struct {
+	*NumColWriter
 	strs map[string]int
 	next int
 }
 
-func NewStrTabWriter(w *TableWriter) *StrTabWriter {
+func NewStrColWriter(w *ColumnWriter) *StrColWriter {
 	strs := map[string]int{}
 	strs[""] = 0
-	return &StrTabWriter{
-		NumTabWriter: NewNumTabWriter(w),
+	return &StrColWriter{
+		NumColWriter: NewNumColWriter(w),
 		strs:         strs,
 		next:         1,
 	}
 }
 
-func (w *StrTabWriter) Write(s string) error {
+func (w *StrColWriter) Write(s string) error {
 	n, ok := w.strs[s]
 	if !ok {
 		n = w.next
 		w.strs[s] = n
 		w.next++
 	}
-	return w.NumTabWriter.Write(n)
+	return w.NumColWriter.Write(n)
 }
 
-func (w *StrTabWriter) Finish() error {
+func (w *StrColWriter) Finish() error {
 	arr := make([]string, w.next)
 	for s, n := range w.strs {
 		arr[n] = s
