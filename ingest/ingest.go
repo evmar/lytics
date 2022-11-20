@@ -68,7 +68,7 @@ type Table interface {
 
 type Loader struct {
 	metaWriter io.WriteCloser
-	dateWriter *NumTabWriter
+	timeWriter *NumTabWriter
 	pathWriter *StrTabWriter
 }
 
@@ -81,11 +81,11 @@ func newLoader(dir string) (*Loader, error) {
 	}
 	l.metaWriter = f
 
-	t, err := NewTableWriter(path.Join(dir, "date"))
+	t, err := NewTableWriter(path.Join(dir, "time"))
 	if err != nil {
 		return nil, err
 	}
-	l.dateWriter = NewNumTabWriter(t)
+	l.timeWriter = NewNumTabWriter(t)
 
 	t, err = NewTableWriter(path.Join(dir, "path"))
 	if err != nil {
@@ -111,7 +111,7 @@ func (l *Loader) parse(r io.Reader) error {
 			continue
 		}
 		rows++
-		if err := l.dateWriter.Write(int(logLine.Time.Unix())); err != nil {
+		if err := l.timeWriter.Write(int(logLine.Time.Unix())); err != nil {
 			return err
 		}
 		if err := l.pathWriter.Write(logLine.Path); err != nil {
@@ -129,7 +129,7 @@ func (l *Loader) parse(r io.Reader) error {
 		Close() error
 	}
 
-	for _, w := range []Table{l.dateWriter, l.pathWriter} {
+	for _, w := range []Table{l.timeWriter, l.pathWriter} {
 		if err := w.Finish(); err != nil {
 			return err
 		}
@@ -150,7 +150,7 @@ func (l *Loader) parse(r io.Reader) error {
 	}
 
 	meta := Meta{Rows: rows, Tables: map[string]TableMeta{}}
-	meta.Tables["date"] = TableMeta{Type: "num"}
+	meta.Tables["time"] = TableMeta{Type: "num"}
 	meta.Tables["path"] = TableMeta{Type: "str"}
 	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
 		return err

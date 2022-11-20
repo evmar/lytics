@@ -1,6 +1,6 @@
 import { Tables } from "./table";
 
-const SCHEMA = { 'date': 'num', 'path': 'str' } as const;
+const SCHEMA = { 'time': 'num', 'path': 'str' } as const;
 
 async function main() {
   const tables = await Tables.load(SCHEMA, "tab");
