@@ -1,3 +1,4 @@
+import { TypedFastBitSet as BitSet } from './TypedFastBitSet';
 
 interface ColMeta {
   type: string;
@@ -57,6 +58,23 @@ export class Table<S> {
   }
 }
 
+export function count(xs: Iterable<number>): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const value of xs) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function top(counts: Map<number, number>, n: number): Array<{ value: number, count: number }> {
+  const top = [];
+  for (const [value, count] of counts.entries()) {
+    top.push({ value, count });
+  }
+  top.sort(({ count: a }, { count: b }) => b - a);
+  return top.slice(0, n);
+}
+
 class NumCol {
   constructor(readonly arr: Uint32Array, readonly rows: number) { }
   static async load(path: string, rows: number): Promise<NumCol> {
@@ -71,31 +89,19 @@ class NumCol {
   raw(row: number): number {
     return this.arr[row];
   }
+  *raws(filter: BitSet): Iterable<number> {
+    for (const val of filter) {
+      yield this.arr[val];
+    }
+  }
 
   str(row: number): string {
     return this.raw(row).toString();
   }
-
-  count(): Map<number, number> {
-    const counts = new Map<number, number>();
-    for (const value of this.arr) {
-      counts.set(value, (counts.get(value) ?? 0) + 1);
-    }
-    return counts;
-  }
-
-  top(n: number): Array<{ value: number, count: number }> {
-    const top = [];
-    for (const [value, count] of this.count().entries()) {
-      top.push({ value, count });
-    }
-    top.sort(({ count: a }, { count: b }) => b - a);
-    return top.slice(0, n);
-  }
 }
 
-class StrCol {
-  constructor(readonly numCol: NumCol, readonly strs: string[]) { }
+class StrCol extends NumCol {
+  constructor(arr: Uint32Array, rows: number, readonly strTab: string[]) { super(arr, rows); }
 
   static async load(path: string, rows: number): Promise<StrCol> {
     const req = await fetch(path);
@@ -103,26 +109,34 @@ class StrCol {
       throw new Error(`load ${path} failed`);
     }
     const raw = await req.arrayBuffer();
-    const numCol = new NumCol(new Uint32Array(raw.slice(0, 4 * rows)), rows);
-    const json = new TextDecoder().decode(new DataView(raw, numCol.arr.byteLength));
-    const strings = JSON.parse(json);
-    strings[0] = null;
-    return new StrCol(numCol, strings);
+    const arr = new Uint32Array(raw.slice(0, 4 * rows));
+    const json = new TextDecoder().decode(new DataView(raw, arr.byteLength));
+    const strTab = JSON.parse(json);
+    strTab[0] = null;
+    return new StrCol(arr, rows, strTab);
   }
 
-  raw(row: number): number {
-    return this.numCol.raw(row);
+  decode(value: number): string {
+    return this.strTab[value];
   }
 
   str(row: number): string {
-    return this.strs[this.raw(row)];
+    return this.decode(this.raw(row));
+  }
+  *strs(filter: BitSet): Iterable<string> {
+    for (const val of filter) {
+      yield this.str(val);
+    }
   }
 
-  top(n: number): Array<{ value: string, count: number }> {
-    const top = [];
-    for (const { value, count } of this.numCol.top(n)) {
-      top.push({ value: this.strs[value], count });
+  eq(str: string): BitSet {
+    const set = new BitSet();
+    for (let i = 0; i < this.arr.length; i++) {
+      const val = this.arr[i];
+      if (this.strTab[val] === str) {
+        set.add(i);
+      }
     }
-    return top;
+    return set;
   }
 }
