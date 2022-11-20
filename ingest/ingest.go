@@ -119,7 +119,11 @@ func (l *Loader) parse(r io.Reader) error {
 		if err := l.pathWriter.Write(logLine.Path); err != nil {
 			return err
 		}
-		if err := l.refWriter.Write(logLine.Referer); err != nil {
+		referer := logLine.Referer
+		if referer == "-" {
+			referer = ""
+		}
+		if err := l.refWriter.Write(referer); err != nil {
 			return err
 		}
 	}

@@ -106,6 +106,7 @@ class StrCol {
     const numCol = new NumCol(new Uint32Array(raw.slice(0, 4 * rows)), rows);
     const json = new TextDecoder().decode(new DataView(raw, numCol.arr.byteLength));
     const strings = JSON.parse(json);
+    strings[0] = null;
     return new StrCol(numCol, strings);
   }
 
