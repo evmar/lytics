@@ -11,13 +11,14 @@ async function main() {
   }
 
   console.log(
-    table.top(table.count(tab.columns.path.arr), 20)
+    table.top(tab.query().col('path').count(), 20)
       .map(({ value, count }) => ({ value: tab.columns.path.decode(value), count }))
   );
 
-  const q = tab.columns.path.eq('/software/blog/2022/01/rethinking-errors.html');
-  console.log(Array.from(q).length);
-  const t = table.top(table.count(tab.columns.ref.raws(q)), 20)
+  const query = tab.query();
+  query.col('path').filter('/software/blog/2022/01/rethinking-errors.html');
+  console.log(Array.from(query.bitset).length);
+  const t = table.top(query.col('ref').count(), 20)
     .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }))
   console.log(t);
 }

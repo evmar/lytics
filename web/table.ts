@@ -8,9 +8,9 @@ interface Meta {
   cols: { [name: string]: ColMeta };
 }
 
-type SchemaCol<T> = T extends 'num' ? NumCol : T extends 'str' ? StrCol : never;
+type ColumnType<T> = T extends 'num' ? NumCol : T extends 'str' ? StrCol : never;
 type SchemaCols<S> = {
-  [col in keyof S]: SchemaCol<S[col]>;
+  [col in keyof S]: ColumnType<S[col]>;
 }
 
 async function loadCheckMeta<S extends { [col: string]: string }>(schema: S, root: string): Promise<Meta> {
@@ -56,14 +56,10 @@ export class Table<S> {
     await Promise.all(loads);
     return new Table(meta.rows, cols as SchemaCols<S>);
   }
-}
 
-export function count(xs: Iterable<number>): Map<number, number> {
-  const counts = new Map<number, number>();
-  for (const value of xs) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
+  query(): Query<S> {
+    return new Query(this);
   }
-  return counts;
 }
 
 export function top(counts: Map<number, number>, n: number): Array<{ value: number, count: number }> {
@@ -89,14 +85,38 @@ class NumCol {
   raw(row: number): number {
     return this.arr[row];
   }
-  *raws(filter: BitSet): Iterable<number> {
-    for (const val of filter) {
-      yield this.arr[val];
-    }
-  }
 
   str(row: number): string {
     return this.raw(row).toString();
+  }
+
+  query(bitset: BitSet): NumQuery {
+    return new NumQuery(this, bitset);
+  }
+}
+
+class NumQuery {
+  constructor(protected col: NumCol, readonly bitset: BitSet) { }
+
+  filter(query: number): this {
+    const set = new BitSet();
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      if (val === query) set.add(i);
+    }
+    this.bitset.intersection(set);
+    return this;
+  }
+
+  count(): Map<number, number> {
+    const counts = new Map<number, number>();
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      counts.set(val, (counts.get(val) ?? 0) + 1);
+    }
+    return counts;
   }
 }
 
@@ -119,24 +139,44 @@ class StrCol extends NumCol {
   decode(value: number): string {
     return this.strTab[value];
   }
+  encode(value: string): number | null {
+    const idx = this.strTab.findIndex((str) => str === value);
+    if (idx < 0) return null;
+    return idx;
+  }
 
   str(row: number): string {
     return this.decode(this.raw(row));
   }
-  *strs(filter: BitSet): Iterable<string> {
-    for (const val of filter) {
-      yield this.str(val);
+
+  query(bitset: BitSet): StrQuery {
+    return new StrQuery(this, bitset);
+  }
+}
+
+class StrQuery extends NumQuery {
+  constructor(protected col: StrCol, bitset: BitSet) { super(col, bitset); }
+
+  filter(query: string | number): this {
+    if (typeof query === 'string') {
+      const q = this.col.encode(query);
+      if (!q) throw new Error('todo');
+      query = q;
     }
+    return super.filter(query);
+  }
+}
+
+type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : never;
+
+export class Query<S> {
+  public bitset: BitSet;
+  constructor(private tab: Table<S>) {
+    this.bitset = new BitSet();
+    this.bitset.addRange(0, tab.rows);
   }
 
-  eq(str: string): BitSet {
-    const set = new BitSet();
-    for (let i = 0; i < this.arr.length; i++) {
-      const val = this.arr[i];
-      if (this.strTab[val] === str) {
-        set.add(i);
-      }
-    }
-    return set;
+  col<col extends keyof S>(colName: col): QueryType<S[col]> {
+    return this.tab.columns[colName].query(this.bitset) as any;
   }
 }
