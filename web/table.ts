@@ -8,7 +8,7 @@ interface Meta {
   cols: { [name: string]: ColMeta };
 }
 
-type ColumnType<T> = T extends 'num' ? NumCol : T extends 'str' ? StrCol : never;
+type ColumnType<T> = T extends 'num' ? NumCol : T extends 'str' ? StrCol : T extends 'date' ? DateCol : never;
 type SchemaCols<S> = {
   [col in keyof S]: ColumnType<S[col]>;
 }
@@ -23,11 +23,12 @@ async function loadCheckMeta<S extends { [col: string]: string }>(schema: S, roo
 
   const cols: { [name: string]: unknown } = {};
   const loads: Array<Promise<void>> = [];
-  for (const [name, type] of Object.entries(schema)) {
+  for (let [name, type] of Object.entries(schema)) {
     const tmeta = meta.cols[name];
     if (!tmeta) {
       throw new Error(`missing column ${name} in meta`);
     }
+    if (type === 'date') type = 'num';
     if (tmeta.type !== type) {
       throw new Error(`column ${name}: expected ${type}, got ${tmeta.type}`);
     }
@@ -44,14 +45,26 @@ export class Table<S> {
     const loads: Array<Promise<void>> = [];
     for (const [name, type] of Object.entries(schema)) {
       const path = `${root}/${name}`;
-      switch (type) {
-        case 'num':
-          loads.push((async () => { cols[name] = await NumCol.load(path, meta.rows); })());
-          break;
-        case 'str':
-          loads.push((async () => { cols[name] = await StrCol.load(path, meta.rows); })());
-          break;
-      }
+      loads.push((async () => {
+        const req = await fetch(path);
+        if (!req.ok) {
+          throw new Error(`load ${path} failed`);
+        }
+        const raw = await req.arrayBuffer();
+        switch (type) {
+          case 'num':
+            cols[name] = new NumCol(raw, meta.rows);
+            break;
+          case 'str':
+            cols[name] = new StrCol(raw, meta.rows);
+            break;
+          case 'date':
+            cols[name] = new DateCol(raw, meta.rows);
+            break;
+          default:
+            throw new Error(`unhandled type ${type}`);
+        }
+      })());
     }
     await Promise.all(loads);
     return new Table(meta.rows, cols as SchemaCols<S>);
@@ -72,21 +85,16 @@ export function top(counts: Map<number, number>, n: number): Array<{ value: numb
 }
 
 class NumCol {
-  constructor(readonly arr: Uint32Array, readonly rows: number) { }
-  static async load(path: string, rows: number): Promise<NumCol> {
-    const req = await fetch(path);
-    if (!req.ok) {
-      throw new Error(`load ${path} failed`);
-    }
-    const raw = await req.arrayBuffer();
-    return new NumCol(new Uint32Array(raw), rows);
+  readonly arr: Uint32Array;
+  constructor(raw: ArrayBuffer, readonly rows: number) {
+    this.arr = new Uint32Array(raw);
   }
 
   raw(row: number): number {
     return this.arr[row];
   }
 
-  str(row: number): string {
+  str(row: number): string | null {
     return this.raw(row).toString();
   }
 
@@ -109,6 +117,17 @@ class NumQuery {
     return this;
   }
 
+  range(min: number, max: number): this {
+    const set = new BitSet();
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      if (val > min && val < max) set.add(i);
+    }
+    this.bitset.intersection(set);
+    return this;
+  }
+
   count(): Map<number, number> {
     const counts = new Map<number, number>();
     for (let i = 0; i < this.col.arr.length; i++) {
@@ -121,22 +140,16 @@ class NumQuery {
 }
 
 class StrCol extends NumCol {
-  constructor(arr: Uint32Array, rows: number, readonly strTab: string[]) { super(arr, rows); }
-
-  static async load(path: string, rows: number): Promise<StrCol> {
-    const req = await fetch(path);
-    if (!req.ok) {
-      throw new Error(`load ${path} failed`);
-    }
-    const raw = await req.arrayBuffer();
+  readonly strTab: Array<string | null>;
+  constructor(raw: ArrayBuffer, rows: number) {
     const arr = new Uint32Array(raw.slice(0, 4 * rows));
     const json = new TextDecoder().decode(new DataView(raw, arr.byteLength));
-    const strTab = JSON.parse(json);
-    strTab[0] = null;
-    return new StrCol(arr, rows, strTab);
+    super(arr, rows);
+    this.strTab = JSON.parse(json);
+    this.strTab[0] = null;
   }
 
-  decode(value: number): string {
+  decode(value: number): string | null {
     return this.strTab[value];
   }
   encode(value: string): number | null {
@@ -145,7 +158,7 @@ class StrCol extends NumCol {
     return idx;
   }
 
-  str(row: number): string {
+  str(row: number): string | null {
     return this.decode(this.raw(row));
   }
 
@@ -167,7 +180,39 @@ class StrQuery extends NumQuery {
   }
 }
 
-type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : never;
+class DateCol extends NumCol {
+  constructor(raw: ArrayBuffer, readonly rows: number) {
+    super(raw, rows);
+    // TODO: this.checkSorted();
+  }
+
+  private check() {
+    let last = 0;
+    for (let i = 0; i < this.arr.length; i++) {
+      const val = this.arr[i];
+      if (val < last) throw new Error(`date column not sorted at entry ${i}: ${last} vs ${val}`);
+      last = val;
+    }
+  }
+
+  query(bitset: BitSet): DateQuery {
+    return new DateQuery(this, bitset);
+  }
+
+  str(row: number): string {
+    return new Date(this.raw(row) * 1000).toString();
+  }
+}
+
+class DateQuery extends NumQuery {
+  range(min: Date | number, max: Date | number): this {
+    if (typeof min !== 'number') min = min.valueOf() / 1000;
+    if (typeof max !== 'number') max = max.valueOf() / 1000;
+    return super.range(min, max);
+  }
+}
+
+type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : T extends 'date' ? DateQuery : never;
 
 export class Query<S> {
   public bitset: BitSet;

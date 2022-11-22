@@ -1,6 +1,6 @@
 import * as table from "./table";
 
-const SCHEMA = { 'time': 'num', 'path': 'str', 'ref': 'str' } as const;
+const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str' } as const;
 
 async function main() {
   const tab = await table.Table.load(SCHEMA, "tab");
@@ -21,6 +21,11 @@ async function main() {
   const t = table.top(query.col('ref').count(), 20)
     .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }))
   console.log(t);
+
+  {
+    const query = tab.query().col('time').range(new Date(2022, 7), new Date(2022, 12));
+    console.log('range', Array.from(query.bitset).length);
+  }
 }
 
 main().catch(err => console.log(err));
