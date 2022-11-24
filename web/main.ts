@@ -58,6 +58,14 @@ function render(query: table.Query<typeof SCHEMA>) {
     .text(d => d);
 }
 
+function measure<T>(name: string, f: () => T): T {
+  const start = performance.mark(name + '-start').name;
+  const ret = f();
+  const end = performance.mark(name + '-end').name;
+  performance.measure(name, start, end);
+  return ret;
+}
+
 async function main() {
   tab = await table.Table.load(SCHEMA, 'tab');
   console.log(tab);
@@ -81,13 +89,18 @@ async function main() {
     console.log(t);
   }
 
-  {
+  const query = measure('main', () => {
     const query = tab.query();
-    query.col('time').range(new Date(2022, 7), new Date(2022, 12));
-    console.log('range', Array.from(query.bitset).length);
-    render(query);
-  }
+    //measure('time', () => query.col('time').range(new Date(2022, 7), new Date(2022, 12)));
+    measure('path', () => query.col('path').filterFn((path) => {
+      return !!(path && (path.endsWith('/') || path.endsWith('.html')));
+    }));
+    return query;
+  });
 
+  measure('render', () => {
+    render(query);
+  });
 }
 
 main().catch(err => console.log(err));

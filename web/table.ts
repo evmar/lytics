@@ -178,6 +178,25 @@ class StrQuery extends NumQuery {
     }
     return super.filter(query);
   }
+
+  filterFn(f: (value: string | null) => boolean): this {
+    const set = new BitSet();
+    const cache = new Map<number, boolean>();
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      let keep = cache.get(val);
+      if (keep === undefined) {
+        keep = f(this.col.decode(val));
+        cache.set(val, keep);
+      }
+      if (keep) {
+        set.add(i);
+      }
+    }
+    this.bitset.intersection(set);
+    return this;
+  }
 }
 
 class DateCol extends NumCol {
