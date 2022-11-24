@@ -200,7 +200,11 @@ class DateCol extends NumCol {
   }
 
   str(row: number): string {
-    return new Date(this.raw(row) * 1000).toString();
+    return this.decode(this.raw(row)).toString();
+  }
+
+  decode(value: number): Date {
+    return new Date(value * 1000);
   }
 }
 
@@ -216,7 +220,7 @@ type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : T 
 
 export class Query<S> {
   public bitset: BitSet;
-  constructor(private tab: Table<S>) {
+  constructor(readonly tab: Table<S>) {
     this.bitset = new BitSet();
     this.bitset.addRange(0, tab.rows);
   }
