@@ -84,7 +84,7 @@ export function top(counts: Map<number, number>, n: number): Array<{ value: numb
   return top.slice(0, n);
 }
 
-class NumCol {
+abstract class Col<Decoded> {
   readonly arr: Uint32Array;
   constructor(raw: ArrayBuffer, readonly rows: number) {
     this.arr = new Uint32Array(raw);
@@ -95,16 +95,38 @@ class NumCol {
   }
 
   str(row: number): string | null {
-    return this.raw(row).toString();
+    return (this.decode(this.raw(row)) ?? '[null]').toString();
   }
 
+  abstract decode(value: number): Decoded;
+}
+
+class NumCol extends Col<number> {
   query(bitset: BitSet): NumQuery {
     return new NumQuery(this, bitset);
   }
+
+  decode(value: number): number {
+    return value;
+  }
 }
 
-class NumQuery {
-  constructor(protected col: NumCol, readonly bitset: BitSet) { }
+class BaseQuery<Decoded> {
+  constructor(protected col: Col<Decoded>, readonly bitset: BitSet) { }
+
+  rawValues(): number[] {
+    const values = [];
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      values.push(val);
+    }
+    return values;
+  }
+
+  values(): Decoded[] {
+    return this.rawValues().map((val) => this.col.decode(val));
+  }
 
   filter(query: number): this {
     const set = new BitSet();
@@ -117,7 +139,7 @@ class NumQuery {
     return this;
   }
 
-  range(min: number, max: number): this {
+  rawRange(min: number, max: number): this {
     const set = new BitSet();
     for (let i = 0; i < this.col.arr.length; i++) {
       if (!this.bitset.has(i)) continue;
@@ -139,7 +161,10 @@ class NumQuery {
   }
 }
 
-class StrCol extends NumCol {
+class NumQuery extends BaseQuery<number> {
+}
+
+class StrCol extends Col<string | null> {
   readonly strTab: Array<string | null>;
   constructor(raw: ArrayBuffer, rows: number) {
     const arr = new Uint32Array(raw.slice(0, 4 * rows));
@@ -158,16 +183,12 @@ class StrCol extends NumCol {
     return idx;
   }
 
-  str(row: number): string | null {
-    return this.decode(this.raw(row));
-  }
-
   query(bitset: BitSet): StrQuery {
     return new StrQuery(this, bitset);
   }
 }
 
-class StrQuery extends NumQuery {
+class StrQuery extends BaseQuery<string | null> {
   constructor(protected col: StrCol, bitset: BitSet) { super(col, bitset); }
 
   filter(query: string | number): this {
@@ -197,9 +218,22 @@ class StrQuery extends NumQuery {
     this.bitset.intersection(set);
     return this;
   }
+
+  filterFn2(f: (value: string | null) => boolean): this {
+    const str = this.col.strTab.map((str) => f(str));
+
+    const set = new BitSet();
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!this.bitset.has(i)) continue;
+      const val = this.col.arr[i];
+      if (str[val]) set.add(i);
+    }
+    this.bitset.intersection(set);
+    return this;
+  }
 }
 
-class DateCol extends NumCol {
+class DateCol extends Col<Date> {
   constructor(raw: ArrayBuffer, readonly rows: number) {
     super(raw, rows);
     // TODO: this.checkSorted();
@@ -218,20 +252,18 @@ class DateCol extends NumCol {
     return new DateQuery(this, bitset);
   }
 
-  str(row: number): string {
-    return this.decode(this.raw(row)).toString();
+  encode(value: Date): number {
+    return value.valueOf() / 1000;
   }
-
   decode(value: number): Date {
     return new Date(value * 1000);
   }
 }
 
-class DateQuery extends NumQuery {
-  range(min: Date | number, max: Date | number): this {
-    if (typeof min !== 'number') min = min.valueOf() / 1000;
-    if (typeof max !== 'number') max = max.valueOf() / 1000;
-    return super.range(min, max);
+class DateQuery extends BaseQuery<Date> {
+  constructor(protected col: DateCol, bitset: BitSet) { super(col, bitset); }
+  range(min: Date, max: Date): this {
+    return super.rawRange(this.col.encode(min), this.col.encode(max));
   }
 }
 

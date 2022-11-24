@@ -2,7 +2,6 @@ import * as table from "./table";
 import * as d3 from 'd3';
 
 const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str' } as const;
-let tab: table.Table<typeof SCHEMA>;
 
 function render(query: table.Query<typeof SCHEMA>) {
   const margin = { top: 10, right: 30, bottom: 30, left: 60 };
@@ -15,10 +14,8 @@ function render(query: table.Query<typeof SCHEMA>) {
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
-  const dates = d3.map(tab.columns.time.arr, (d) => tab.columns.time.decode(d));
+  const dates = query.col('time').values();
 
-  const ext = d3.extent(dates) as [Date, Date];
-  console.log(ext);
   const x = d3.scaleUtc()
     .domain(d3.extent(dates) as [Date, Date])
     .range([0, width])
@@ -67,17 +64,11 @@ function measure<T>(name: string, f: () => T): T {
 }
 
 async function main() {
-  tab = await table.Table.load(SCHEMA, 'tab');
-  console.log(tab);
+  const tab = await table.Table.load(SCHEMA, 'tab');
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 3; i++) {
     console.log('row', i, tab.columns.time.str(i), tab.columns.path.str(i), tab.columns.ref.str(i));
   }
-
-  console.log(
-    table.top(tab.query().col('path').count(), 20)
-      .map(({ value, count }) => ({ value: tab.columns.path.decode(value), count }))
-  );
 
   {
 
@@ -91,8 +82,8 @@ async function main() {
 
   const query = measure('main', () => {
     const query = tab.query();
-    //measure('time', () => query.col('time').range(new Date(2022, 7), new Date(2022, 12)));
-    measure('path', () => query.col('path').filterFn((path) => {
+    measure('time', () => query.col('time').range(new Date(2022, 7), new Date(2022, 12)));
+    measure('path', () => query.col('path').filterFn2((path) => {
       return !!(path && (path.endsWith('/') || path.endsWith('.html')));
     }));
     return query;
