@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 
 const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str' } as const;
 
+const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
+
 function render(query: table.Query<typeof SCHEMA>) {
   const margin = { top: 10, right: 30, bottom: 30, left: 60 };
   const width = 600;
@@ -14,35 +16,49 @@ function render(query: table.Query<typeof SCHEMA>) {
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
-  const dates = query.col('time').values();
+  const datesRaw = measure('values', () => query.col('time').values());
+
+  // Bucket timestamps by date.
+  // A quick benchmark found this faster than using d3.timeDay.
+  // Note: we don't use d3.bin both for performance and because we don't want
+  // autocomputed bin boundaries.
+  // TODO: try precomputing the bucket limits as numbers, so we do
+  // O(number of buckets) date computations rather than O(number of entries).
+  const dates = measure('byDate', () => {
+    const bucket: (date: Date) => string = (date) => `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
+    //-${date.getUTCDate()}`;
+    const byDate = new Map<string, number>();
+    for (const date of datesRaw) {
+      const stamp = bucket(date);
+      byDate.set(stamp, (byDate.get(stamp) ?? 0) + 1);
+    }
+    return Array.from(byDate.entries()).map(([stamp, count]) => ({ date: new Date(stamp), count }));
+  });
+  console.log(`${datesRaw.length} => ${dates.length} values`);
 
   const x = d3.scaleUtc()
-    .domain(d3.extent(dates) as [Date, Date])
+    .domain(d3.extent(dates, d => d.date) as [Date, Date])
     .range([0, width])
     .nice();
   svg.append('g')
     .attr('transform', `translate(0, ${height})`)
     .call(d3.axisBottom(x));
 
-  const bin = d3.bin<Date, Date>()
-    (dates);
   const y = d3.scaleLinear()
-    .domain([0, d3.max(bin, (d) => d.length)!])
+    .domain([0, d3.max(dates, d => d.count)!])
     .range([height, 0]);
-
   svg.append('g')
     .call(d3.axisLeft(y));
 
+  const barWidth = x(dates[1].date) - x(dates[0].date) + 0.5;
   svg.selectAll('#line')
-    .data([bin])
-    .join('path')
-    .attr('fill', 'none')
-    .attr('stroke', 'steelblue')
-    .attr('stroke-width', 1.5)
-    .attr('d', d3.line<d3.Bin<Date, Date>>()
-      .x(d => x(d.x0!))
-      .y(d => y(d.length))
-    );
+    .data(dates)
+    .join('rect')
+    .attr('fill', palette[0])
+    .attr('x', d => x(d.date))
+    .attr('width', d => barWidth)
+    .attr('y', d => y(d.count))
+    .attr('height', d => y(0) - y(d.count));
 
   const htable = d3.select('#viz').append('table');
   const top = table.top(query.col('path').count(), 20);
@@ -74,15 +90,14 @@ async function main() {
 
     const query = tab.query();
     query.col('path').filter('/software/blog/2022/01/rethinking-errors.html');
-    console.log(Array.from(query.bitset).length);
     const t = table.top(query.col('ref').count(), 20)
       .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }))
-    console.log(t);
+    console.log('top', t);
   }
 
   const query = measure('main', () => {
     const query = tab.query();
-    measure('time', () => query.col('time').range(new Date(2022, 7), new Date(2022, 12)));
+    //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn2((path) => {
       return !!(path && (path.endsWith('/') || path.endsWith('.html')));
     }));
