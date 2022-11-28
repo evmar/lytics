@@ -99,7 +99,15 @@ async function main() {
     const query = tab.query();
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn2((path) => {
-      return !!(path && (path.endsWith('/') || path.endsWith('.html')));
+      if (!path) return false;
+      switch (path) {
+        case '/favicon.ico':
+        case '/robots.txt':
+          return false;
+      }
+      if (path.endsWith('/atom.xml') || path.endsWith('/atom')) return false;
+      if (path.endsWith('.css')) return false;
+      return true;
     }));
     return query;
   });
