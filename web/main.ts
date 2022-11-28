@@ -1,7 +1,7 @@
 import * as table from "./table";
 import * as d3 from 'd3';
 
-const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str' } as const;
+const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str', 'ua': 'str' } as const;
 
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
@@ -79,21 +79,38 @@ function measure<T>(name: string, f: () => T): T {
   return ret;
 }
 
+function isNotBot(ua: string): boolean {
+  // XXX too hacky to use
+  if (!ua) return true;
+  switch (ua) {
+    case 'NextCloud-News/1.0':
+    case 'pageCheck.py/0.4':
+    case 'The Knowledge AI':
+      return false;
+  }
+  if (ua.includes('Bot') || ua.includes('bot') || ua.includes('Crawler')) return false;
+  if (ua.includes('Feed') || ua.includes('RSS') || ua.includes('news')) return false;
+  return true;
+}
+
 async function main() {
   const tab = await table.Table.load(SCHEMA, 'tab');
 
   for (let i = 0; i < 3; i++) {
-    console.log('row', i, tab.columns.time.str(i), tab.columns.path.str(i), tab.columns.ref.str(i));
+    console.log('row', i, tab.columns.time.str(i), tab.columns.path.str(i), tab.columns.ref.str(i), tab.columns.ua.str(i));
   }
 
-  {
-
+  measure('ua', () => {
     const query = tab.query();
-    query.col('path').filter('/software/blog/2022/01/rethinking-errors.html');
-    const t = table.top(query.col('ref').count(), 20)
-      .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }))
+    query.col('ua').filterFn2(ua => {
+      if (!ua || !ua.startsWith('Mozilla/')) return false;
+      if (ua.match(/bot|crawl|spider/i)) return false;
+      return true;
+    });
+    const t = table.top(query.col('ua').count(), 50)
+      .map(({ value, count }) => ({ value: tab.columns.ua.decode(value), count }))
     console.log('top', t);
-  }
+  });
 
   const query = measure('main', () => {
     const query = tab.query();

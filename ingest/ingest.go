@@ -34,7 +34,8 @@ func (l *LogLine) parse(text string) error {
 	var timeStr string
 	var status string
 	var size string
-	l.Hostname, timeStr, l.Method, l.Path, status, size, l.Referer, l.UA = m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]
+	var ua string
+	l.Hostname, timeStr, l.Method, l.Path, status, size, l.Referer, ua = m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]
 
 	var err error
 	l.Time, err = time.Parse("02/Jan/2006:15:04:05", timeStr)
@@ -57,6 +58,11 @@ func (l *LogLine) parse(text string) error {
 		}
 		l.Size = int(n)
 	}
+
+	if ua == "-" {
+		ua = ""
+	}
+	l.UA = ua
 
 	return nil
 }
@@ -120,6 +126,7 @@ type Loader struct {
 	timeWriter *NumColWriter
 	pathWriter *StrColWriter
 	refWriter  *StrColWriter
+	uaWriter   *StrColWriter
 }
 
 func newLoader(dir string) (*Loader, error) {
@@ -150,6 +157,12 @@ func newLoader(dir string) (*Loader, error) {
 	}
 	l.refWriter = NewStrColWriter(t)
 
+	t, err = NewColumnWriter(path.Join(dir, "ua"))
+	if err != nil {
+		return nil, err
+	}
+	l.uaWriter = NewStrColWriter(t)
+
 	return &l, nil
 }
 
@@ -165,6 +178,9 @@ func (l *Loader) writeLine(logLine *LogLine) error {
 		referer = ""
 	}
 	if err := l.refWriter.Write(referer); err != nil {
+		return err
+	}
+	if err := l.uaWriter.Write(logLine.UA); err != nil {
 		return err
 	}
 	return nil
@@ -219,7 +235,7 @@ func (l *Loader) parse(r io.Reader) error {
 		Close() error
 	}
 
-	for _, w := range []Column{l.timeWriter, l.pathWriter, l.refWriter} {
+	for _, w := range []Column{l.timeWriter, l.pathWriter, l.refWriter, l.uaWriter} {
 		if err := w.Finish(); err != nil {
 			return err
 		}
@@ -241,6 +257,7 @@ func (l *Loader) parse(r io.Reader) error {
 	meta.Cols["time"] = ColMeta{"type": "num", "asc": true}
 	meta.Cols["path"] = ColMeta{"type": "str"}
 	meta.Cols["ref"] = ColMeta{"type": "str"}
+	meta.Cols["ua"] = ColMeta{"type": "str"}
 	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
 		return err
 	}
