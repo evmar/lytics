@@ -2,6 +2,7 @@ import { TypedFastBitSet as BitSet } from './TypedFastBitSet';
 
 interface ColMeta {
   type: string;
+  [key: string]: unknown;
 }
 interface Meta {
   rows: number;
@@ -51,15 +52,16 @@ export class Table<S> {
           throw new Error(`load ${path} failed`);
         }
         const raw = await req.arrayBuffer();
+        const asc = !!meta.cols[name]['asc'];
         switch (type) {
           case 'num':
-            cols[name] = new NumCol(raw, meta.rows);
+            cols[name] = new NumCol(raw, meta.rows, asc);
             break;
           case 'str':
             cols[name] = new StrCol(raw, meta.rows);
             break;
           case 'date':
-            cols[name] = new DateCol(raw, meta.rows);
+            cols[name] = new DateCol(raw, meta.rows, asc);
             break;
           default:
             throw new Error(`unhandled type ${type}`);
@@ -86,8 +88,13 @@ export function top(counts: Map<number, number>, n: number): Array<{ value: numb
 
 abstract class Col<Decoded> {
   readonly arr: Uint32Array;
-  constructor(raw: ArrayBuffer, readonly rows: number) {
+  constructor(raw: ArrayBuffer, readonly rows: number, asc: boolean) {
     this.arr = new Uint32Array(raw);
+    if (asc) {
+      for (let i = 1; i < this.arr.length; i++) {
+        this.arr[i] += this.arr[i - 1];
+      }
+    }
   }
 
   raw(row: number): number {
@@ -169,7 +176,7 @@ class StrCol extends Col<string | null> {
   constructor(raw: ArrayBuffer, rows: number) {
     const arr = new Uint32Array(raw.slice(0, 4 * rows));
     const json = new TextDecoder().decode(new DataView(raw, arr.byteLength));
-    super(arr, rows);
+    super(arr, rows, false);
     this.strTab = JSON.parse(json);
     this.strTab[0] = null;
   }
@@ -234,17 +241,10 @@ class StrQuery extends BaseQuery<string | null> {
 }
 
 class DateCol extends Col<Date> {
-  constructor(raw: ArrayBuffer, readonly rows: number) {
-    super(raw, rows);
-    // TODO: this.checkSorted();
-  }
-
-  private check() {
-    let last = 0;
-    for (let i = 0; i < this.arr.length; i++) {
-      const val = this.arr[i];
-      if (val < last) throw new Error(`date column not sorted at entry ${i}: ${last} vs ${val}`);
-      last = val;
+  constructor(raw: ArrayBuffer, readonly rows: number, asc: boolean) {
+    super(raw, rows, asc);
+    if (!asc) {
+      throw new Error('date column must be ascending');
     }
   }
 

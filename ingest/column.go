@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 )
@@ -22,6 +23,8 @@ func NewColumnWriter(path string) (*ColumnWriter, error) {
 
 type NumColWriter struct {
 	*ColumnWriter
+	Ascending bool
+	Prev      int
 }
 
 func NewNumColWriter(w *ColumnWriter) *NumColWriter {
@@ -29,6 +32,14 @@ func NewNumColWriter(w *ColumnWriter) *NumColWriter {
 }
 
 func (w *NumColWriter) Write(n int) error {
+	if w.Ascending {
+		prev := n
+		if n < w.Prev {
+			return fmt.Errorf("column marked ascending, but %d < previous %d", n, w.Prev)
+		}
+		n -= w.Prev
+		w.Prev = prev
+	}
 	buf := [4]byte{byte(n), byte(n >> 8), byte(n >> 16), byte(n >> 24)}
 	_, err := w.Writer.Write(buf[:])
 	return err

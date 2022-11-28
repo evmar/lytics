@@ -61,6 +61,60 @@ func (l *LogLine) parse(text string) error {
 	return nil
 }
 
+// logMinHeap is a minheap that lets us find the earliest LogLine from a set quickly.
+type logMinHeap struct {
+	lines []*LogLine
+	cap   int
+	size  int
+}
+
+func newLogMinHeap(cap int) *logMinHeap {
+	return &logMinHeap{
+		lines: make([]*LogLine, cap),
+		cap:   cap,
+	}
+}
+
+func (h *logMinHeap) insert(line *LogLine) {
+	h.lines[h.size] = line
+	i := h.size
+	for i != 0 {
+		parent := (i - 1) / 2
+		if h.lines[i].Time.After(h.lines[parent].Time) {
+			break
+		}
+		h.lines[parent], h.lines[i] = h.lines[i], h.lines[parent]
+		i = parent
+	}
+	h.size++
+}
+
+func (h *logMinHeap) pop() *LogLine {
+	ret := h.lines[0]
+	h.lines[0] = h.lines[h.size-1]
+	h.size--
+
+	i := 0
+	for {
+		smallest := i
+		left := i*2 + 1
+		right := i*2 + 2
+		if left < h.size && h.lines[left].Time.Before(h.lines[smallest].Time) {
+			smallest = left
+		}
+		if right < h.size && h.lines[right].Time.Before(h.lines[smallest].Time) {
+			smallest = right
+		}
+		if smallest == i {
+			break
+		}
+		h.lines[i], h.lines[smallest] = h.lines[smallest], h.lines[i]
+		i = smallest
+	}
+
+	return ret
+}
+
 type Loader struct {
 	metaWriter io.WriteCloser
 	timeWriter *NumColWriter
@@ -82,6 +136,7 @@ func newLoader(dir string) (*Loader, error) {
 		return nil, err
 	}
 	l.timeWriter = NewNumColWriter(t)
+	l.timeWriter.Ascending = true
 
 	t, err = NewColumnWriter(path.Join(dir, "path"))
 	if err != nil {
@@ -98,12 +153,42 @@ func newLoader(dir string) (*Loader, error) {
 	return &l, nil
 }
 
+func (l *Loader) writeLine(logLine *LogLine) error {
+	if err := l.timeWriter.Write(int(logLine.Time.Unix())); err != nil {
+		return err
+	}
+	if err := l.pathWriter.Write(logLine.Path); err != nil {
+		return err
+	}
+	referer := logLine.Referer
+	if referer == "-" {
+		referer = ""
+	}
+	if err := l.refWriter.Write(referer); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (l *Loader) parse(r io.Reader) error {
 	rows := 0
 	lines := 0
 	s := bufio.NewScanner(r)
-	var logLine LogLine
+
+	// Use a minheap to handle the case of log lines being slightly out of order.
+	heap := newLogMinHeap(32)
 	for s.Scan() {
+		var logLine *LogLine
+		if heap.cap == heap.size {
+			logLine = heap.pop()
+			if err := l.writeLine(logLine); err != nil {
+				return fmt.Errorf("line %d: %s in %q", lines, err, logLine)
+			}
+			rows++
+		} else {
+			logLine = &LogLine{}
+		}
+
 		lines++
 		line := s.Text()
 		if err := logLine.parse(line); err != nil {
@@ -112,24 +197,20 @@ func (l *Loader) parse(r io.Reader) error {
 		if logLine.Status != 200 {
 			continue
 		}
-		rows++
-		if err := l.timeWriter.Write(int(logLine.Time.Unix())); err != nil {
-			return err
-		}
-		if err := l.pathWriter.Write(logLine.Path); err != nil {
-			return err
-		}
-		referer := logLine.Referer
-		if referer == "-" {
-			referer = ""
-		}
-		if err := l.refWriter.Write(referer); err != nil {
-			return err
-		}
+		heap.insert(logLine)
 	}
 	if err := s.Err(); err != nil {
 		return err
 	}
+
+	for heap.size > 0 {
+		logLine := heap.pop()
+		if err := l.writeLine(logLine); err != nil {
+			return fmt.Errorf("line %d: %s in %q", lines, err, logLine)
+		}
+		rows++
+	}
+
 	log.Printf("read %d lines", rows)
 
 	type Column interface {
@@ -150,18 +231,16 @@ func (l *Loader) parse(r io.Reader) error {
 		}
 	}
 
-	type ColMeta struct {
-		Type string `json:"type"`
-	}
+	type ColMeta map[string]interface{}
 	type Meta struct {
 		Rows int                `json:"rows"`
 		Cols map[string]ColMeta `json:"cols"`
 	}
 
 	meta := Meta{Rows: rows, Cols: map[string]ColMeta{}}
-	meta.Cols["time"] = ColMeta{Type: "num"}
-	meta.Cols["path"] = ColMeta{Type: "str"}
-	meta.Cols["ref"] = ColMeta{Type: "str"}
+	meta.Cols["time"] = ColMeta{"type": "num", "asc": true}
+	meta.Cols["path"] = ColMeta{"type": "str"}
+	meta.Cols["ref"] = ColMeta{"type": "str"}
 	if err := json.NewEncoder(l.metaWriter).Encode(meta); err != nil {
 		return err
 	}
