@@ -48,7 +48,8 @@ function render(query: table.Query<typeof SCHEMA>) {
     .domain([0, d3.max(dates, d => d.count)!])
     .range([height, 0]);
   svg.append('g')
-    .call(d3.axisLeft(y));
+    .call(d3.axisLeft(y).ticks(5))
+    .call(g => g.select('.domain').remove())
 
   const barWidth = x(dates[1].date) - x(dates[0].date) + 0.5;
   svg.selectAll('#line')
