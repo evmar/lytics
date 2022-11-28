@@ -172,8 +172,13 @@ func (l *Loader) parse(r io.Reader) error {
 	return nil
 }
 
-func run() error {
-	l, err := newLoader("../tab")
+func run(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: ingest outpath")
+	}
+	outpath := args[0]
+
+	l, err := newLoader(outpath)
 	if err != nil {
 		return err
 	}
@@ -182,7 +187,7 @@ func run() error {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 	}
 }

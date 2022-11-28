@@ -10,4 +10,4 @@ for path in "${paths[@]}"; do
     else
         cat $path
     fi
-done | go run .
+done | go run . ../tab
