@@ -100,8 +100,9 @@ async function main() {
     console.log('row', i, tab.columns.time.str(i), tab.columns.path.str(i), tab.columns.ref.str(i), tab.columns.ua.str(i));
   }
 
+  const query = tab.query();
+
   measure('ua', () => {
-    const query = tab.query();
     query.col('ua').filterFn2(ua => {
       if (!ua || !ua.startsWith('Mozilla/')) return false;
       if (ua.match(/bot|crawl|spider/i)) return false;
@@ -112,8 +113,7 @@ async function main() {
     console.log('top', t);
   });
 
-  const query = measure('main', () => {
-    const query = tab.query();
+  measure('main', () => {
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn2((path) => {
       if (!path) return false;
@@ -124,9 +124,9 @@ async function main() {
       }
       if (path.endsWith('/atom.xml') || path.endsWith('/atom')) return false;
       if (path.endsWith('.css')) return false;
+      if (path.endsWith('.woff')) return false;
       return true;
     }));
-    return query;
   });
 
   measure('render', () => {
