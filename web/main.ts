@@ -6,11 +6,12 @@ const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str', 'ua': 'str' } as c
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
 function render(query: table.Query<typeof SCHEMA>) {
-  const margin = { top: 10, right: 30, bottom: 30, left: 60 };
+  const margin = { top: 10, right: 30, bottom: 20, left: 60 };
   const width = 600;
-  const height = 200;
+  const height = 150;
 
-  const svg = d3.select('#viz').append('svg')
+  const svg = d3.select('body').append('svg')
+    .attr('id', 'viz')
     .attr('width', margin.left + width + margin.right)
     .attr('height', margin.top + height + margin.bottom)
     .append('g')
@@ -48,7 +49,7 @@ function render(query: table.Query<typeof SCHEMA>) {
     .domain([0, d3.max(dates, d => d.count)!])
     .range([height, 0]);
   svg.append('g')
-    .call(d3.axisLeft(y).ticks(5))
+    .call(d3.axisLeft(y).ticks(4))
     .call(g => g.select('.domain').remove())
 
   const barWidth = x(dates[1].date) - x(dates[0].date) + 0.5;
@@ -61,7 +62,7 @@ function render(query: table.Query<typeof SCHEMA>) {
     .attr('y', d => y(d.count))
     .attr('height', d => y(0) - y(d.count));
 
-  const htable = d3.select('#viz').append('table');
+  const htable = d3.select('body').append('section').append('table');
   const top = table.top(query.col('path').count(), 20);
   const rows = htable.selectAll('tr')
     .data(top)
