@@ -1,7 +1,12 @@
 import * as table from "./table";
 import * as d3 from 'd3';
 
-const SCHEMA = { 'time': 'date', 'path': 'str', 'ref': 'str', 'ua': 'str' } as const;
+const SCHEMA = {
+  'time': 'date',
+  'path': 'str',
+  'ref': 'str',
+  'ua': 'str',
+} as const;
 
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
@@ -81,17 +86,22 @@ function measure<T>(name: string, f: () => T): T {
   return ret;
 }
 
-function isNotBot(ua: string): boolean {
-  // XXX too hacky to use
-  if (!ua) return true;
-  switch (ua) {
-    case 'NextCloud-News/1.0':
-    case 'pageCheck.py/0.4':
-    case 'The Knowledge AI':
+function uaLooksLikeUser(ua: string | null): boolean {
+  if (!ua || !ua.startsWith('Mozilla/')) return false;
+  if (ua.match(/bot|crawl|spider/i)) return false;
+  return true;
+}
+
+function pathLooksLikeContent(path: string | null): boolean {
+  if (!path) return false;
+  switch (path) {
+    case '/favicon.ico':
+    case '/robots.txt':
       return false;
   }
-  if (ua.includes('Bot') || ua.includes('bot') || ua.includes('Crawler')) return false;
-  if (ua.includes('Feed') || ua.includes('RSS') || ua.includes('news')) return false;
+  if (path.endsWith('/atom.xml') || path.endsWith('/atom')) return false;
+  if (path.endsWith('.css')) return false;
+  if (path.endsWith('.woff')) return false;
   return true;
 }
 
@@ -105,11 +115,7 @@ async function main() {
   const query = tab.query();
 
   measure('ua', () => {
-    query.col('ua').filterFn2(ua => {
-      if (!ua || !ua.startsWith('Mozilla/')) return false;
-      if (ua.match(/bot|crawl|spider/i)) return false;
-      return true;
-    });
+    query.col('ua').filterFn(uaLooksLikeUser);
     const t = table.top(query.col('ua').count(), 50)
       .map(({ value, count }) => ({ value: tab.columns.ua.decode(value), count }))
     console.log('top', t);
@@ -117,18 +123,7 @@ async function main() {
 
   measure('main', () => {
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
-    measure('path', () => query.col('path').filterFn2((path) => {
-      if (!path) return false;
-      switch (path) {
-        case '/favicon.ico':
-        case '/robots.txt':
-          return false;
-      }
-      if (path.endsWith('/atom.xml') || path.endsWith('/atom')) return false;
-      if (path.endsWith('.css')) return false;
-      if (path.endsWith('.woff')) return false;
-      return true;
-    }));
+    measure('path', () => query.col('path').filterFn(pathLooksLikeContent));
   });
 
   measure('render', () => {
