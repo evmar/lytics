@@ -45,7 +45,7 @@ export class Table<S> {
     const cols: { [name: string]: unknown } = {};
     const loads: Array<Promise<void>> = [];
     for (const [name, type] of Object.entries(schema)) {
-      const path = `${root}/${name}`;
+      const path = `${root}/${name}.js`;
       loads.push((async () => {
         const req = await fetch(path);
         if (!req.ok) {

@@ -138,26 +138,26 @@ func newLoader(dir string) (*Loader, error) {
 	}
 	l.metaWriter = f
 
-	t, err := NewColumnWriter(path.Join(dir, "time"))
+	t, err := NewColumnWriter(path.Join(dir, "time.js"))
 	if err != nil {
 		return nil, err
 	}
 	l.timeWriter = NewNumColWriter(t)
 	l.timeWriter.Ascending = true
 
-	t, err = NewColumnWriter(path.Join(dir, "path"))
+	t, err = NewColumnWriter(path.Join(dir, "path.js"))
 	if err != nil {
 		return nil, err
 	}
 	l.pathWriter = NewStrColWriter(t)
 
-	t, err = NewColumnWriter(path.Join(dir, "ref"))
+	t, err = NewColumnWriter(path.Join(dir, "ref.js"))
 	if err != nil {
 		return nil, err
 	}
 	l.refWriter = NewStrColWriter(t)
 
-	t, err = NewColumnWriter(path.Join(dir, "ua"))
+	t, err = NewColumnWriter(path.Join(dir, "ua.js"))
 	if err != nil {
 		return nil, err
 	}
