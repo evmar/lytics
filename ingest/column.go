@@ -21,6 +21,23 @@ func NewColumnWriter(path string) (*ColumnWriter, error) {
 	return &ColumnWriter{WriteCloser: f, Writer: bufio.NewWriter(f)}, nil
 }
 
+func (w *ColumnWriter) WriteInt(x uint32) error {
+	for {
+		b := uint8(x & 0x7F)
+		x >>= 7
+		if x > 0 {
+			b |= 0x80
+		}
+		if err := w.Writer.WriteByte(b); err != nil {
+			return err
+		}
+		if x == 0 {
+			break
+		}
+	}
+	return nil
+}
+
 type NumColWriter struct {
 	*ColumnWriter
 	Ascending bool
@@ -40,9 +57,7 @@ func (w *NumColWriter) Write(n int) error {
 		n -= w.Prev
 		w.Prev = prev
 	}
-	buf := [4]byte{byte(n), byte(n >> 8), byte(n >> 16), byte(n >> 24)}
-	_, err := w.Writer.Write(buf[:])
-	return err
+	return w.WriteInt(uint32(n))
 }
 
 func (w *NumColWriter) Finish() error {

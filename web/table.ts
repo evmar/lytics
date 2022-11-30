@@ -55,13 +55,13 @@ export class Table<S> {
         const asc = !!meta.cols[name]['asc'];
         switch (type) {
           case 'num':
-            cols[name] = new NumCol(raw, meta.rows, asc);
+            cols[name] = NumCol.decode(raw, meta.rows, asc);
             break;
           case 'str':
-            cols[name] = new StrCol(raw, meta.rows);
+            cols[name] = StrCol.decode(raw, meta.rows, asc);
             break;
           case 'date':
-            cols[name] = new DateCol(raw, meta.rows, asc);
+            cols[name] = DateCol.decode(raw, meta.rows, asc);
             break;
           default:
             throw new Error(`unhandled type ${type}`);
@@ -86,16 +86,35 @@ export function top(counts: Map<number, number>, n: number): Array<{ value: numb
   return top.slice(0, n);
 }
 
+function readVarInts(raw: ArrayBuffer, count: number): [Uint32Array, number] {
+  const values = new Uint32Array(count);
+  const view = new DataView(raw);
+  let ofs = 0;
+  for (let i = 0; i < count; i++) {
+    let n = 0;
+    for (let shift = 0; ; shift += 7) {
+      let b = view.getUint8(ofs++);
+      n |= (b & 0x7F) << shift;
+      if (!(b & 0x80)) break;
+    }
+    values[i] = n;
+  }
+  return [values, ofs];
+}
+
 abstract class Col<Decoded> {
-  readonly arr: Uint32Array;
-  constructor(raw: ArrayBuffer, readonly rows: number, asc: boolean) {
-    this.arr = new Uint32Array(raw);
+  /** Decode varints from an ArrayBuffer, returning the values and the end offset. */
+  static decodeRaw(raw: ArrayBuffer, rows: number, asc: boolean): [Uint32Array, number] {
+    const [arr, ofs] = readVarInts(raw, rows);
     if (asc) {
-      for (let i = 1; i < this.arr.length; i++) {
-        this.arr[i] += this.arr[i - 1];
+      for (let i = 1; i < arr.length; i++) {
+        arr[i] += arr[i - 1];
       }
     }
+    return [arr, ofs];
   }
+
+  constructor(readonly arr: Uint32Array, readonly rows: number) { }
 
   raw(row: number): number {
     return this.arr[row];
@@ -109,6 +128,11 @@ abstract class Col<Decoded> {
 }
 
 class NumCol extends Col<number> {
+  static decode(raw: ArrayBuffer, rows: number, asc: boolean): NumCol {
+    const [arr,] = Col.decodeRaw(raw, rows, asc);
+    return new NumCol(arr, rows);
+  }
+
   query(query: Query<unknown>): NumQuery {
     return new NumQuery(this, query);
   }
@@ -170,13 +194,16 @@ class NumQuery extends BaseQuery<number> {
 }
 
 class StrCol extends Col<string | null> {
-  readonly strTab: Array<string | null>;
-  constructor(raw: ArrayBuffer, rows: number) {
-    const arr = new Uint32Array(raw.slice(0, 4 * rows));
-    const json = new TextDecoder().decode(new DataView(raw, arr.byteLength));
-    super(arr, rows, false);
-    this.strTab = JSON.parse(json);
-    this.strTab[0] = null;
+  static decode(raw: ArrayBuffer, rows: number, asc: boolean): StrCol {
+    const [arr, ofs] = Col.decodeRaw(raw, rows, asc);
+    const json = new TextDecoder().decode(new DataView(raw, ofs));
+    const strTab = JSON.parse(json);
+    strTab[0] = null;
+    return new StrCol(arr, rows, strTab);
+  }
+
+  constructor(arr: Uint32Array, rows: number, readonly strTab: Array<string | null>) {
+    super(arr, rows);
   }
 
   decode(value: number): string | null {
@@ -218,11 +245,12 @@ export class StrQuery extends BaseQuery<string | null> {
 }
 
 class DateCol extends Col<Date> {
-  constructor(raw: ArrayBuffer, readonly rows: number, asc: boolean) {
-    super(raw, rows, asc);
+  static decode(raw: ArrayBuffer, rows: number, asc: boolean): DateCol {
     if (!asc) {
       throw new Error('date column must be ascending');
     }
+    const [arr,] = Col.decodeRaw(raw, rows, asc);
+    return new DateCol(arr, rows);
   }
 
   query(query: Query<unknown>): DateQuery {
