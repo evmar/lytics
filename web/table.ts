@@ -252,12 +252,20 @@ type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : T 
 
 export class Query<S> {
   public bitset: BitSet;
-  constructor(readonly tab: Table<S>) {
-    this.bitset = new BitSet();
-    this.bitset.addRange(0, tab.rows);
+  constructor(readonly tab: Table<S>, bitset?: BitSet) {
+    if (bitset) {
+      this.bitset = bitset;
+    } else {
+      this.bitset = new BitSet();
+      this.bitset.addRange(0, tab.rows);
+    }
   }
 
   col<col extends keyof S>(colName: col): QueryType<S[col]> {
     return this.tab.columns[colName].query(this.bitset) as any;
+  }
+
+  clone(): Query<S> {
+    return new Query(this.tab, this.bitset.clone());
   }
 }

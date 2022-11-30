@@ -11,8 +11,8 @@ const SCHEMA = {
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
 function topTable(id: string, col: table.StrQuery) {
-  const htable = d3.select(`#${id}`).append('table');
   const top = table.top(col.count(), 20);
+  const htable = d3.select(`#${id}`).data([top]).join('table');
   const rows = htable.selectAll('tr')
     .data(top)
     .join('tr');
@@ -79,8 +79,33 @@ function render(query: table.Query<typeof SCHEMA>) {
     .attr('y', d => y(d.count))
     .attr('height', d => y(0) - y(d.count));
 
-  topTable('path', query.col('path'));
-  topTable('ref', query.col('ref'));
+  let trim: [Date, Date] | undefined;
+  const brush = d3.brushX()
+    .extent([[0, 0], [width, height]])
+    .on('brush', (event: d3.D3BrushEvent<number>) => {
+      const [min, max] = event.selection as [number, number];
+      trim = [x.invert(min), x.invert(max)];
+      tabs();
+    })
+    .on('end', (event) => {
+      if (!event.selection) {
+        trim = undefined;
+        tabs();
+      }
+    });
+  svg.append('g')
+    .call(brush);
+
+  function tabs() {
+    let q = query;
+    if (trim) {
+      q = query.clone();
+      q.col('time').range(trim[0], trim[1]);
+    }
+    topTable('path', q.col('path'));
+    topTable('ref', q.col('ref'));
+  }
+  tabs();
 }
 
 function measure<T>(name: string, f: () => T): T {
@@ -136,9 +161,7 @@ async function main() {
     const t = table.top(query.col('ref').count(), 50)
       .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }));
     console.log('top', t);
-
   }
-
 
   measure('render', () => {
     render(query);
