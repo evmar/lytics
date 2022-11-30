@@ -2,7 +2,8 @@
   "name": "web",
   "version": "1.0.0",
   "scripts": {
-    "serve": "esbuild --bundle --target=es2020 --sourcemap --servedir=. --outfile=bundle.js main.ts"
+    "serve": "esbuild --bundle --target=es2020 --sourcemap --servedir=. --outfile=bundle.js main.ts",
+    "bundle": "esbuild --bundle --target=es2020 --sourcemap --outfile=bundle.js main.ts"
   },
   "devDependencies": {
     "@types/d3": "^7.4.0",
