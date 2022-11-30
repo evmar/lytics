@@ -195,8 +195,8 @@ class StrCol extends Col<string | null> {
   }
 }
 
-class StrQuery extends BaseQuery<string | null> {
-  constructor(protected col: StrCol, bitset: BitSet) { super(col, bitset); }
+export class StrQuery extends BaseQuery<string | null> {
+  constructor(readonly col: StrCol, bitset: BitSet) { super(col, bitset); }
 
   filter(query: string | number): this {
     if (typeof query === 'string') {

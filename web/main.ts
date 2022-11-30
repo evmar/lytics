@@ -10,12 +10,24 @@ const SCHEMA = {
 
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
+function topTable(id: string, col: table.StrQuery) {
+  const htable = d3.select(`#${id}`).append('table');
+  const top = table.top(col.count(), 20);
+  const rows = htable.selectAll('tr')
+    .data(top)
+    .join('tr');
+  const tds = rows.selectAll('td')
+    .data(d => [col.col.decode(d.value)?.substring(0, 50) || 'none', d.count])
+    .join('td')
+    .text(d => d);
+}
+
 function render(query: table.Query<typeof SCHEMA>) {
   const margin = { top: 10, right: 30, bottom: 20, left: 60 };
   const width = 600;
   const height = 150;
 
-  const svg = d3.select('body').append('svg')
+  const svg = d3.select('#viz').append('svg')
     .attr('id', 'viz')
     .attr('width', margin.left + width + margin.right)
     .attr('height', margin.top + height + margin.bottom)
@@ -67,15 +79,8 @@ function render(query: table.Query<typeof SCHEMA>) {
     .attr('y', d => y(d.count))
     .attr('height', d => y(0) - y(d.count));
 
-  const htable = d3.select('body').append('section').append('table');
-  const top = table.top(query.col('path').count(), 20);
-  const rows = htable.selectAll('tr')
-    .data(top)
-    .join('tr');
-  const tds = rows.selectAll('td')
-    .data(d => [query.tab.columns.path.decode(d.value), d.count])
-    .join('td')
-    .text(d => d);
+  topTable('path', query.col('path'));
+  topTable('ref', query.col('ref'));
 }
 
 function measure<T>(name: string, f: () => T): T {
@@ -124,7 +129,16 @@ async function main() {
   measure('main', () => {
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn(pathLooksLikeContent));
+    //query.col('path').filter('/content/dfw/ffacy.pdf');
   });
+
+  {
+    const t = table.top(query.col('ref').count(), 50)
+      .map(({ value, count }) => ({ value: tab.columns.ref.decode(value), count }));
+    console.log('top', t);
+
+  }
+
 
   measure('render', () => {
     render(query);
