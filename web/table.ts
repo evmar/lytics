@@ -109,8 +109,8 @@ abstract class Col<Decoded> {
 }
 
 class NumCol extends Col<number> {
-  query(bitset: BitSet): NumQuery {
-    return new NumQuery(this, bitset);
+  query(query: Query<unknown>): NumQuery {
+    return new NumQuery(this, query);
   }
 
   decode(value: number): number {
@@ -119,12 +119,13 @@ class NumCol extends Col<number> {
 }
 
 class BaseQuery<Decoded> {
-  constructor(protected col: Col<Decoded>, readonly bitset: BitSet) { }
+  constructor(protected col: Col<Decoded>, readonly query: Query<unknown>) { }
 
   rawValues(): number[] {
     const values = [];
+    const set = this.query.bitset;
     for (let i = 0; i < this.col.arr.length; i++) {
-      if (!this.bitset.has(i)) continue;
+      if (set?.has(i)) continue;
       const val = this.col.arr[i];
       values.push(val);
     }
@@ -136,31 +137,28 @@ class BaseQuery<Decoded> {
   }
 
   filter(query: number): this {
-    const set = new BitSet();
+    const set = (this.query.bitset ??= new BitSet());
     for (let i = 0; i < this.col.arr.length; i++) {
-      if (!this.bitset.has(i)) continue;
       const val = this.col.arr[i];
-      if (val === query) set.add(i);
+      if (val !== query) set.add(i);
     }
-    this.bitset.intersection(set);
     return this;
   }
 
   rawRange(min: number, max: number): this {
-    const set = new BitSet();
+    const set = (this.query.bitset ??= new BitSet());
     for (let i = 0; i < this.col.arr.length; i++) {
-      if (!this.bitset.has(i)) continue;
       const val = this.col.arr[i];
-      if (val > min && val < max) set.add(i);
+      if (val < min || val > max) set.add(i);
     }
-    this.bitset.intersection(set);
     return this;
   }
 
   count(): Map<number, number> {
+    const set = this.query.bitset;
     const counts = new Map<number, number>();
     for (let i = 0; i < this.col.arr.length; i++) {
-      if (!this.bitset.has(i)) continue;
+      if (set?.has(i)) continue;
       const val = this.col.arr[i];
       counts.set(val, (counts.get(val) ?? 0) + 1);
     }
@@ -190,13 +188,13 @@ class StrCol extends Col<string | null> {
     return idx;
   }
 
-  query(bitset: BitSet): StrQuery {
-    return new StrQuery(this, bitset);
+  query(query: Query<unknown>): StrQuery {
+    return new StrQuery(this, query);
   }
 }
 
 export class StrQuery extends BaseQuery<string | null> {
-  constructor(readonly col: StrCol, bitset: BitSet) { super(col, bitset); }
+  constructor(readonly col: StrCol, query: Query<unknown>) { super(col, query); }
 
   filter(query: string | number): this {
     if (typeof query === 'string') {
@@ -210,13 +208,11 @@ export class StrQuery extends BaseQuery<string | null> {
   filterFn(f: (value: string | null) => boolean): this {
     const str = this.col.strTab.map((str) => f(str));
 
-    const set = new BitSet();
+    const set = (this.query.bitset ??= new BitSet());
     for (let i = 0; i < this.col.arr.length; i++) {
-      if (!this.bitset.has(i)) continue;
       const val = this.col.arr[i];
-      if (str[val]) set.add(i);
+      if (!str[val]) set.add(i);
     }
-    this.bitset.intersection(set);
     return this;
   }
 }
@@ -229,8 +225,8 @@ class DateCol extends Col<Date> {
     }
   }
 
-  query(bitset: BitSet): DateQuery {
-    return new DateQuery(this, bitset);
+  query(query: Query<unknown>): DateQuery {
+    return new DateQuery(this, query);
   }
 
   encode(value: Date): number {
@@ -242,7 +238,7 @@ class DateCol extends Col<Date> {
 }
 
 class DateQuery extends BaseQuery<Date> {
-  constructor(protected col: DateCol, bitset: BitSet) { super(col, bitset); }
+  constructor(protected col: DateCol, query: Query<unknown>) { super(col, query); }
   range(min: Date, max: Date): this {
     return super.rawRange(this.col.encode(min), this.col.encode(max));
   }
@@ -251,21 +247,16 @@ class DateQuery extends BaseQuery<Date> {
 type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : T extends 'date' ? DateQuery : never;
 
 export class Query<S> {
-  public bitset: BitSet;
-  constructor(readonly tab: Table<S>, bitset?: BitSet) {
-    if (bitset) {
-      this.bitset = bitset;
-    } else {
-      this.bitset = new BitSet();
-      this.bitset.addRange(0, tab.rows);
-    }
+  constructor(readonly tab: Table<S>,
+    /** set[i] is 1 when the ith row is *excluded*; this makes the set operations simpler. */
+    public bitset?: BitSet) {
   }
 
   col<col extends keyof S>(colName: col): QueryType<S[col]> {
-    return this.tab.columns[colName].query(this.bitset) as any;
+    return this.tab.columns[colName].query(this) as any;
   }
 
   clone(): Query<S> {
-    return new Query(this.tab, this.bitset.clone());
+    return new Query(this.tab, this.bitset?.clone());
   }
 }
