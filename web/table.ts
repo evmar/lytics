@@ -160,7 +160,7 @@ class BaseQuery<Decoded> {
     return this.rawValues().map((val) => this.col.decode(val));
   }
 
-  filter(query: number): this {
+  filterRaw(query: number): this {
     const set = (this.query.bitset ??= new BitSet());
     for (let i = 0; i < this.col.arr.length; i++) {
       const val = this.col.arr[i];
@@ -223,13 +223,10 @@ class StrCol extends Col<string | null> {
 export class StrQuery extends BaseQuery<string | null> {
   constructor(readonly col: StrCol, query: Query<unknown>) { super(col, query); }
 
-  filter(query: string | number): this {
-    if (typeof query === 'string') {
-      const q = this.col.encode(query);
-      if (!q) throw new Error('todo');
-      query = q;
-    }
-    return super.filter(query);
+  filter(query: string): this {
+    const enc = this.col.encode(query);
+    if (!enc) throw new Error('todo');
+    return super.filterRaw(enc);
   }
 
   filterFn(f: (value: string | null) => boolean): this {
