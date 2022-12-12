@@ -155,7 +155,7 @@ async function main() {
   measure('main', () => {
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn(pathLooksLikeContent));
-    query.col('path').filter('/');
+    //query.col('path').filter('/');
     //query.col('path').filter('/content/dfw/ffacy.pdf');
   });
 
