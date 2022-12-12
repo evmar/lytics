@@ -186,7 +186,7 @@ func (l *Loader) writeLine(logLine *LogLine) error {
 	return nil
 }
 
-func (l *Loader) parse(r io.Reader) error {
+func (l *Loader) load(r io.Reader) error {
 	rows := 0
 	lines := 0
 	s := bufio.NewScanner(r)
@@ -229,19 +229,7 @@ func (l *Loader) parse(r io.Reader) error {
 
 	log.Printf("read %d lines", rows)
 
-	type Column interface {
-		Finish() error
-		Flush() error
-		Close() error
-	}
-
-	for _, w := range []Column{l.timeWriter, l.pathWriter, l.refWriter, l.uaWriter} {
-		if err := w.Finish(); err != nil {
-			return err
-		}
-		if err := w.Flush(); err != nil {
-			return err
-		}
+	for _, w := range []io.Closer{l.timeWriter, l.pathWriter, l.refWriter, l.uaWriter} {
 		if err := w.Close(); err != nil {
 			return err
 		}
@@ -279,7 +267,7 @@ func run(args []string) error {
 		return err
 	}
 
-	return l.parse(os.Stdin)
+	return l.load(os.Stdin)
 }
 
 func main() {

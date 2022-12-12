@@ -9,8 +9,8 @@ import (
 )
 
 type ColumnWriter struct {
-	*bufio.Writer
-	io.WriteCloser
+	file io.Closer
+	w    *bufio.Writer
 }
 
 func NewColumnWriter(path string) (*ColumnWriter, error) {
@@ -18,7 +18,7 @@ func NewColumnWriter(path string) (*ColumnWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ColumnWriter{WriteCloser: f, Writer: bufio.NewWriter(f)}, nil
+	return &ColumnWriter{file: f, w: bufio.NewWriter(f)}, nil
 }
 
 func (w *ColumnWriter) WriteInt(x uint32) error {
@@ -28,7 +28,7 @@ func (w *ColumnWriter) WriteInt(x uint32) error {
 		if x > 0 {
 			b |= 0x80
 		}
-		if err := w.Writer.WriteByte(b); err != nil {
+		if err := w.w.WriteByte(b); err != nil {
 			return err
 		}
 		if x == 0 {
@@ -38,34 +38,39 @@ func (w *ColumnWriter) WriteInt(x uint32) error {
 	return nil
 }
 
+func (w *ColumnWriter) Close() error {
+	if err := w.w.Flush(); err != nil {
+		return err
+	}
+	return w.file.Close()
+}
+
 type NumColWriter struct {
-	*ColumnWriter
+	col       *ColumnWriter
 	Ascending bool
 	Prev      int
 }
 
 func NewNumColWriter(w *ColumnWriter) *NumColWriter {
-	return &NumColWriter{ColumnWriter: w}
+	return &NumColWriter{col: w}
 }
 
 func (w *NumColWriter) Write(n int) error {
 	if w.Ascending {
-		prev := n
 		if n < w.Prev {
 			return fmt.Errorf("column marked ascending, but %d < previous %d", n, w.Prev)
 		}
-		n -= w.Prev
-		w.Prev = prev
+		n, w.Prev = n-w.Prev, n
 	}
-	return w.WriteInt(uint32(n))
+	return w.col.WriteInt(uint32(n))
 }
 
-func (w *NumColWriter) Finish() error {
-	return nil
+func (w *NumColWriter) Close() error {
+	return w.col.Close()
 }
 
 type StrColWriter struct {
-	*NumColWriter
+	num  *NumColWriter
 	strs map[string]int
 	next int
 }
@@ -74,9 +79,9 @@ func NewStrColWriter(w *ColumnWriter) *StrColWriter {
 	strs := map[string]int{}
 	strs[""] = 0
 	return &StrColWriter{
-		NumColWriter: NewNumColWriter(w),
-		strs:         strs,
-		next:         1,
+		num:  NewNumColWriter(w),
+		strs: strs,
+		next: 1,
 	}
 }
 
@@ -87,13 +92,16 @@ func (w *StrColWriter) Write(s string) error {
 		w.strs[s] = n
 		w.next++
 	}
-	return w.NumColWriter.Write(n)
+	return w.num.Write(n)
 }
 
-func (w *StrColWriter) Finish() error {
+func (w *StrColWriter) Close() error {
 	arr := make([]string, w.next)
 	for s, n := range w.strs {
 		arr[n] = s
 	}
-	return json.NewEncoder(w.Writer).Encode(arr)
+	if err := json.NewEncoder(w.num.col.w).Encode(arr); err != nil {
+		return err
+	}
+	return w.num.Close()
 }
