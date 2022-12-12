@@ -17,7 +17,7 @@ function topTable(id: string, col: table.StrQuery) {
     .data(top)
     .join('tr');
   const tds = rows.selectAll('td')
-    .data(d => [col.col.decode(d.value)?.substring(0, 50) || 'none', d.count])
+    .data(d => [col.col.decode(d.value)?.substring(0, 80) || 'none', d.count])
     .join('td')
     .text(d => d);
 }
@@ -104,6 +104,7 @@ function render(query: table.Query<typeof SCHEMA>) {
     }
     topTable('path', q.col('path'));
     topTable('ref', q.col('ref'));
+    topTable('ua', q.col('ua'));
   }
   tabs();
 }
@@ -154,6 +155,7 @@ async function main() {
   measure('main', () => {
     //measure('time', () => query.col('time').range(new Date(2022, 4), new Date(2022, 12)));
     measure('path', () => query.col('path').filterFn(pathLooksLikeContent));
+    query.col('path').filter('/');
     //query.col('path').filter('/content/dfw/ffacy.pdf');
   });
 
