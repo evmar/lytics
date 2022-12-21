@@ -4,6 +4,8 @@
     body {
         font-family: sans-serif;
         font-size: 13px;
+        margin: 4ex auto;
+        width: 80ex;
     }
 
     h1,
@@ -13,12 +15,25 @@
 
     #viz {
         display: block;
-        margin: 4ex auto;
+        /* svg is 690px wide */
+        margin: 0 calc((80ex - 690px)/2);
     }
 
-    section {
-        margin: 4ex auto;
+    table {
         width: 80ex;
+        border-spacing: 0;
+    }
+
+    tr:nth-child(even) {
+        background-color: #f2f2f2;
+    }
+
+    td {
+        padding: 4px;
+    }
+
+    td.num {
+        text-align: right;
     }
 </style>
 

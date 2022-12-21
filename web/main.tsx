@@ -18,7 +18,7 @@ function TopTable({ name, col }: { name: string, col: table.StrQuery }): preact.
     const text = col.col.decode(value)?.substring(0, 80) || 'none';
     return <tr>
       <td>{text}</td>
-      <td>{count}</td>
+      <td class='num'>{count}</td>
     </tr>;
   });
   return <section>
