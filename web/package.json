@@ -2,8 +2,8 @@
   "name": "web",
   "version": "1.0.0",
   "scripts": {
-    "serve": "esbuild --bundle --target=es2020 --sourcemap --servedir=. --outfile=bundle.js main.ts",
-    "bundle": "esbuild --bundle --target=es2020 --sourcemap --outfile=bundle.js main.ts"
+    "serve": "esbuild --bundle --target=es2020 --sourcemap --servedir=. --outfile=bundle.js main.tsx",
+    "bundle": "esbuild --bundle --target=es2020 --sourcemap --outfile=bundle.js main.tsx"
   },
   "devDependencies": {
     "@types/d3": "^7.4.0",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "d3": "^7.6.1",
-    "d3-brush": "^3.0.0"
+    "d3-brush": "^3.0.0",
+    "preact": "^10.11.3"
   }
 }
