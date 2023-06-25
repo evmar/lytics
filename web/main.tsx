@@ -2,6 +2,8 @@ import * as table from "./table";
 import * as d3 from 'd3';
 import * as preact from 'preact';
 import * as hooks from 'preact/hooks';
+import { Signal, useComputed, useSignal } from '@preact/signals';
+import { memo } from 'preact/compat';
 
 const SCHEMA = {
   'time': 'date',
@@ -9,11 +11,12 @@ const SCHEMA = {
   'ref': 'str',
   'ua': 'str',
 } as const;
+type LogQuery = table.Query<typeof SCHEMA>;
 
 const palette = ['#22A39F', '#222222', '#434242', '#F3EFE0'];
 
 function TopTable({ name, col }: { name: string, col: table.StrQuery }): preact.JSX.Element {
-  const top = hooks.useMemo(() => table.top(col.count(), 20), [col]);
+  const top = table.top(col.count(), 20);
   const rows = top.map(({ value, count }) => {
     const text = col.col.decode(value)?.substring(0, 80) || 'none';
     return <tr>
@@ -27,11 +30,8 @@ function TopTable({ name, col }: { name: string, col: table.StrQuery }): preact.
   </section>;
 }
 
-function Chart({ query, setSpan }: { query: table.Query<typeof SCHEMA>, setSpan: (span: [Date, Date] | undefined) => void }) {
-  const svgRef = preact.createRef<SVGSVGElement>();
-  hooks.useEffect(() => d3Chart(svgRef.current!), []);
-
-  return <svg ref={svgRef} />;
+function Chart({ query, span }: { query: LogQuery, span: Signal<[Date, Date] | undefined> }) {
+  return <svg ref={(dom) => { if (dom) d3Chart(dom) }} />;
 
   function d3Chart(node: SVGElement) {
     const margin = { top: 10, right: 30, bottom: 20, left: 60 };
@@ -94,17 +94,18 @@ function Chart({ query, setSpan }: { query: table.Query<typeof SCHEMA>, setSpan:
       .extent([[0, 0], [width, height]])
       .on('brush', (event: d3.D3BrushEvent<number>) => {
         const [min, max] = event.selection as [number, number];
-        setSpan([x.invert(min), x.invert(max)]);
+        span.value = [x.invert(min), x.invert(max)];
       })
       .on('end', (event) => {
         if (!event.selection) {
-          setSpan(undefined);
+          span.value = undefined;
         }
       });
     svg.append('g')
       .call(brush);
   }
 }
+const MemoChart = memo(Chart);
 
 function measure<T>(name: string, f: () => T): T {
   const start = performance.mark(name + '-start').name;
@@ -131,6 +132,28 @@ function pathLooksLikeContent(path: string | null): boolean {
   if (path.endsWith('.css')) return false;
   if (path.endsWith('.woff')) return false;
   return true;
+}
+
+function App({ query }: { query: LogQuery }) {
+  const span = useSignal<[Date, Date] | undefined>(undefined);
+
+  const q = useComputed(() => {
+    if (span.value) {
+      const q = query.clone();
+      q.col('time').range(span.value[0], span.value[1]);
+      return q;
+    } else {
+      return query;
+    }
+  });
+
+  return <>
+    <h1>lytics</h1>
+    <MemoChart query={query} span={span} />
+    <TopTable name='path' col={q.value.col('path')} />
+    <TopTable name='ref' col={q.value.col('ref')} />
+    <TopTable name='ua' col={q.value.col('ua')} />
+  </>;
 }
 
 async function main() {
@@ -166,31 +189,3 @@ async function main() {
 }
 
 main().catch(err => console.log(err));
-
-namespace App {
-  export interface State {
-    query: table.Query<typeof SCHEMA>;
-    span?: [Date, Date];
-  }
-}
-function App({ query }: { query: table.Query<typeof SCHEMA> }) {
-  const [span, setSpan] = hooks.useState<[Date, Date] | undefined>(undefined);
-
-  const q = hooks.useMemo(() => {
-    if (span) {
-      const q = query.clone();
-      q.col('time').range(span[0], span[1]);
-      return q;
-    } else {
-      return query;
-    }
-  }, [query, span]);
-
-  return <>
-    <h1>lytics</h1>
-    <Chart query={query} setSpan={setSpan} />
-    <TopTable name='path' col={q.col('path')} />
-    <TopTable name='ref' col={q.col('ref')} />
-    <TopTable name='ua' col={q.col('ua')} />
-  </>;
-}
