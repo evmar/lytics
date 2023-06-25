@@ -136,17 +136,13 @@ function pathLooksLikeContent(path: string | null): boolean {
 async function main() {
   const tab = await table.Table.load(SCHEMA, 'tab');
 
-  for (let i = 0; i < 3; i++) {
-    console.log('row', i, tab.columns.time.str(i), tab.columns.path.str(i), tab.columns.ref.str(i), tab.columns.ua.str(i));
-  }
-
   const query = tab.query();
 
   measure('ua', () => {
     query.col('ua').filterFn(uaLooksLikeUser);
-    const t = table.top(query.col('ua').count(), 50)
-      .map(({ value, count }) => ({ value: tab.columns.ua.decode(value), count }))
-    console.log('top', t);
+    // const t = table.top(query.col('ua').count(), 50)
+    //   .map(({ value, count }) => ({ value: tab.columns.ua.decode(value), count }))
+    // console.log('top', t);
   });
 
   measure('main', () => {

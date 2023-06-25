@@ -77,6 +77,7 @@ export class Table<S> {
   }
 }
 
+/** Given a map of value=>count, return an Array of the top n [value, count] pairs based on count. */
 export function top(counts: Map<number, number>, n: number): Array<{ value: number, count: number }> {
   const top = [];
   for (const [value, count] of counts.entries()) {
@@ -178,6 +179,7 @@ class BaseQuery<Decoded> {
     return this;
   }
 
+  /** Count the values, returning a map of value=>count. */
   count(): Map<number, number> {
     const set = this.query.bitset;
     const counts = new Map<number, number>();
@@ -229,6 +231,7 @@ export class StrQuery extends BaseQuery<string | null> {
     return super.filterRaw(enc);
   }
 
+  /** Filter this column by selecting values for which the function returns true. */
   filterFn(f: (value: string | null) => boolean): this {
     const str = this.col.strTab.map((str) => f(str));
 
@@ -280,6 +283,7 @@ class DateQuery extends BaseQuery<Date> {
     return this;
   }
 
+  /** Filter this query by a min/max range. */
   range(min: Date, max: Date): this {
     return this.rawRange(this.col.encode(min), this.col.encode(max));
   }
@@ -287,16 +291,19 @@ class DateQuery extends BaseQuery<Date> {
 
 type QueryType<T> = T extends 'num' ? NumQuery : T extends 'str' ? StrQuery : T extends 'date' ? DateQuery : never;
 
+/** A filtered subset of a table. */
 export class Query<S> {
   constructor(readonly tab: Table<S>,
     /** set[i] is 1 when the ith row is *excluded*; this makes the set operations simpler. */
     public bitset?: BitSet) {
   }
 
+  /** Select a column for filtering. */
   col<col extends keyof S>(colName: col): QueryType<S[col]> {
     return this.tab.columns[colName].query(this) as any;
   }
 
+  /** Clone this query, allowing further filtering without mutating the original query. */
   clone(): Query<S> {
     return new Query(this.tab, this.bitset?.clone());
   }
