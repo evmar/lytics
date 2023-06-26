@@ -161,6 +161,14 @@ class BaseQuery<Decoded> {
     return this.rawValues().map((val) => this.col.decode(val));
   }
 
+  matchNone(): this {
+    const set = (this.query.bitset ??= new BitSet());
+    for (let i = 0; i < this.col.arr.length; i++) {
+      set.add(i);
+    }
+    return this;
+  }
+
   filterRaw(query: number): this {
     const set = (this.query.bitset ??= new BitSet());
     for (let i = 0; i < this.col.arr.length; i++) {
@@ -227,7 +235,7 @@ export class StrQuery extends BaseQuery<string | null> {
 
   filter(query: string): this {
     const enc = this.col.encode(query);
-    if (!enc) throw new Error('todo');
+    if (!enc) return this.matchNone();
     return super.filterRaw(enc);
   }
 

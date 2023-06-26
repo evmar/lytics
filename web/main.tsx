@@ -1,9 +1,17 @@
 import * as table from "./table";
 import * as d3 from 'd3';
 import * as preact from 'preact';
-import * as hooks from 'preact/hooks';
+import { useMemo } from 'preact/hooks';
 import { Signal, useComputed, useSignal } from '@preact/signals';
 import { memo } from 'preact/compat';
+
+declare module 'preact' {
+  namespace JSX {
+    interface HTMLAttributes<RefType extends EventTarget = EventTarget> {
+      valueAsDate?: Date | undefined | SignalLike<Date | undefined>;
+    }
+  }
+}
 
 const SCHEMA = {
   'time': 'date',
@@ -30,7 +38,7 @@ function TopTable({ name, col }: { name: string, col: table.StrQuery }): preact.
   </section>;
 }
 
-function Chart({ query, span }: { query: LogQuery, span: Signal<[Date, Date] | undefined> }) {
+function Chart({ query, sel }: { query: LogQuery, sel: Signal<[Date, Date] | undefined> }) {
   return <svg ref={(dom) => { if (dom) d3Chart(dom) }} />;
 
   function d3Chart(node: SVGElement) {
@@ -94,11 +102,11 @@ function Chart({ query, span }: { query: LogQuery, span: Signal<[Date, Date] | u
       .extent([[0, 0], [width, height]])
       .on('brush', (event: d3.D3BrushEvent<number>) => {
         const [min, max] = event.selection as [number, number];
-        span.value = [x.invert(min), x.invert(max)];
+        sel.value = [x.invert(min), x.invert(max)];
       })
       .on('end', (event) => {
         if (!event.selection) {
-          span.value = undefined;
+          sel.value = undefined;
         }
       });
     svg.append('g')
@@ -134,22 +142,50 @@ function pathLooksLikeContent(path: string | null): boolean {
   return true;
 }
 
+interface Filter {
+  span: Signal<[Date, Date] | undefined>;
+  path: Signal<string | undefined>;
+}
+
+function Filter({ filter }: { filter: Filter }) {
+  return <div>
+    <h2>filter</h2>
+    <p>from&nbsp;
+      <input type='date' valueAsDate={filter.span.value ? filter.span.value[0] : undefined} />
+      {' '}
+      to&nbsp;<input type='date' valueAsDate={filter.span.value ? filter.span.value[1] : undefined} />
+      {' '}
+      <button>last 30 days</button> <button>this year</button></p>
+    <p>path: <input type='text' value={filter.path.value} onInput={e => filter.path.value = (e.target as HTMLInputElement).value} /></p>
+  </div>;
+}
+
+
 function App({ query }: { query: LogQuery }) {
-  const span = useSignal<[Date, Date] | undefined>(undefined);
+  const filter: Filter = {
+    span: useSignal<[Date, Date] | undefined>(undefined),
+    path: useSignal<string | undefined>(undefined),
+  };
+
+  //const domain = useMemo(() => d3.extent(query.col('time').values()), [query]) as [Date, Date]
 
   const q = useComputed(() => {
-    if (span.value) {
-      const q = query.clone();
-      q.col('time').range(span.value[0], span.value[1]);
-      return q;
-    } else {
-      return query;
+    const q = query.clone();
+    if (filter.span.value) {
+      let [from, to] = filter.span.value;
+      q.col('time').range(from, to);
     }
+    if (filter.path.value) {
+      console.log('path', filter.path.value);
+      q.col('path').filter(filter.path.value);
+    }
+    return q;
   });
 
   return <>
     <h1>lytics</h1>
-    <MemoChart query={query} span={span} />
+    <MemoChart query={query} sel={filter.span} />
+    <Filter filter={filter} />
     <TopTable name='path' col={q.value.col('path')} />
     <TopTable name='ref' col={q.value.col('ref')} />
     <TopTable name='ua' col={q.value.col('ua')} />
