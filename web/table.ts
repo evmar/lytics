@@ -276,6 +276,27 @@ class DateCol extends Col<Date> {
 class DateQuery extends BaseQuery<Date> {
   constructor(protected col: DateCol, query: Query<unknown>) { super(col, query); }
 
+  getDomain(): [Date, Date] | undefined {
+    const set = this.query.bitset ?? new BitSet();
+    let min: number | undefined;
+    let max: number | undefined;
+    for (let i = 0; i < this.col.arr.length; i++) {
+      if (!set.has(i)) {
+        min = i;
+        break;
+      }
+    }
+    if (!min) return;
+    for (let i = this.col.arr.length - 1; i >= 0; i--) {
+      if (!set.has(i)) {
+        max = i;
+        break;
+      }
+    }
+    if (!max) return;
+    return [this.col.decode(this.col.raw(min)), this.col.decode(this.col.raw(max))];
+  }
+
   rawRange(min: number, max: number): this {
     const set = (this.query.bitset ??= new BitSet());
     // Rely on the fact that the column is ordered to bulk set all the relevant bits.

@@ -38,7 +38,7 @@ function TopTable({ name, col }: { name: string, col: table.StrQuery }): preact.
   </section>;
 }
 
-function Chart({ query, sel }: { query: LogQuery, sel: Signal<[Date, Date] | undefined> }) {
+function Chart({ query, domain, sel }: { query: LogQuery, domain: [Date, Date], sel: Signal<[Date, Date] | undefined> }) {
   return <svg ref={(dom) => { if (dom) d3Chart(dom) }} />;
 
   function d3Chart(node: SVGElement) {
@@ -74,7 +74,7 @@ function Chart({ query, sel }: { query: LogQuery, sel: Signal<[Date, Date] | und
     console.log(`${datesRaw.length} => ${dates.length} values`);
 
     const x = d3.scaleUtc()
-      .domain(d3.extent(dates, d => d.date) as [Date, Date])
+      .domain(domain)
       .range([0, width])
       .nice();
     svg.append('g')
@@ -182,9 +182,11 @@ function App({ query }: { query: LogQuery }) {
     return q;
   });
 
+  const domain = useMemo(() => query.col('time').getDomain()!, [query]);
+
   return <>
     <h1>lytics</h1>
-    <MemoChart query={query} sel={filter.span} />
+    <MemoChart query={query} domain={domain} sel={filter.span} />
     <Filter filter={filter} />
     <TopTable name='path' col={q.value.col('path')} />
     <TopTable name='ref' col={q.value.col('ref')} />
