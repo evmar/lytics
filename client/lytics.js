@@ -4,7 +4,7 @@ async function log() {
         referer: document.referer,
         agent: navigator.userAgent,
     };
-    await fetch('/lytics', {
+    await fetch('/lytics.cgi', {
         method: 'POST',
         body: JSON.stringify(log),
     });
